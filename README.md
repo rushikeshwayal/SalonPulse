@@ -16,7 +16,7 @@ SalonPulse is a salon operations demo built with **FastAPI**, **SQLAlchemy**, **
 
 ## Backend layout
 
-The backend is organized into **shared infrastructure**, **common domain services**, and two explicit API panels. Each panel feature has a thin `route.py`, feature-specific `schema.py` where it needs request/response contracts, and a `services.py` layer. Shared entities are defined once because both panels work with the same visit/customer tables.
+The backend is organized into **shared infrastructure**, **common domain services and projections**, and two explicit API panels. Each panel feature has a thin `route.py`, feature-specific `schema.py` where it needs request/response contracts, and a `services.py` layer. Read models, serializers, access rules and formatting helpers live under `common/projections/`. Shared entities are defined once because both panels work with the same visit/customer tables; root `app.services` is now a compatibility re-export rather than a large implementation file.
 
 ```text
 backend/app/
@@ -48,6 +48,18 @@ backend/app/
       feedback.py
       ratings.py
     services/                 # Domain use-cases shared across panels
+      projections/               # Shared read models, serializers and access rules
+        access.py
+        audit.py
+        catalog.py
+        customers.py
+        dashboard.py
+        feedback.py
+        formatting.py
+        messages.py
+        recovery.py
+        serializers.py
+        visits.py
       visits.py
       customers.py
       feedback.py
