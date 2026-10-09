@@ -44,22 +44,37 @@
   <div class="session-actions"><div><strong id="currentUser"></strong><small id="currentRole"></small></div><button id="logout" class="secondary">Sign out</button></div>
 </header>
 <main>
-  <section class="hero">
+  <section class="hero" id="workspaceHero" data-barber-view="overview">
     <div><p id="workspaceEyebrow" class="eyebrow">SALON OPERATIONS</p><h1 id="workspaceTitle">Hear what customers<br>don't always say.</h1><p id="workspaceSubtitle" class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
-    <button id="newVisit" class="primary">✦ Start a check-in</button>
+    <button id="newVisitOwner" class="primary" data-owner-only>✦ Start a check-in</button>
   </section>
-  <section class="stats" id="stats"></section>
-  <section class="grid">
-    <article class="panel"><div class="panel-title"><div><h2>Private feedback inbox</h2><p>Visible to authorized management in this demo.</p></div><button id="newFeedback" class="secondary">＋ Record feedback</button></div><div id="feedback"></div></article>
+  <section class="stats" id="stats" data-barber-view="overview"></section>
+  <section class="barber-start-card" id="startVisitSection" data-barber-only data-barber-view="overview">
+    <div><strong>Just served a customer?</strong><p>Record the visit, services, and total in a few steps.</p></div>
+    <button id="newVisit" class="primary">＋ Start recording</button>
+  </section>
+  <nav id="barberNav" class="workspace-nav" data-barber-only aria-label="Barber workspace pages">
+    <button type="button" class="workspace-tab active" data-barber-tab="overview">Overview</button>
+    <button type="button" class="workspace-tab" data-barber-tab="visits">Visits</button>
+    <button type="button" class="workspace-tab" data-barber-tab="customers">Customers</button>
+    <button type="button" class="workspace-tab" data-barber-tab="feedback">Feedback</button>
+    <button type="button" class="workspace-tab" data-barber-tab="activity">Activity log</button>
+  </nav>
+  <section class="grid" id="feedbackSection" data-barber-view="feedback">
+    <article class="panel"><div class="panel-title"><div><h2>Private feedback inbox</h2><p>Feedback for visits assigned to your account.</p></div><button id="newFeedback" class="secondary">＋ Record feedback</button></div><div id="feedback"></div></article>
     <article class="panel" data-owner-only><div class="panel-title"><div><h2>Service recovery</h2><p>Track issues until they're resolved.</p></div></div><div id="tasks"></div></article>
   </section>
-  <section class="grid">
+  <section class="grid" id="visitsSection" data-barber-view="visits">
     <article class="panel" data-owner-only><div class="panel-title"><div><h2>Branch performance</h2><p>Revenue and guest experience by store.</p></div></div><div id="branches"></div></article>
     <article class="panel"><div class="panel-title"><div><h2 id="visitListTitle">Recent visits</h2><p id="visitListSubtitle">Service, customer, and change history.</p></div></div><div id="visits"></div></article>
   </section>
+  <section class="panel" id="customerSection" data-barber-only data-barber-view="customers">
+    <div class="panel-title"><div><h2>Your customers</h2><p>Customers with a visit assigned to your barber account.</p></div></div>
+    <div id="barberCustomers"></div>
+  </section>
   <section class="panel" data-owner-only><div class="panel-title"><div><h2>Message activity</h2><p>Preview queue events. No real WhatsApp messages are sent.</p></div><button id="reset" class="secondary">Reset demo</button></div><div id="messages"></div></section>
   <section class="panel" data-owner-only><div class="panel-title"><div><h2>Employee performance</h2><p>Revenue, visits, and feedback by barber.</p></div></div><div id="employeeInsights"></div></section>
-  <section class="panel"><div class="panel-title"><div><h2>Activity &amp; version history</h2><p>Every saved visit edit creates a permanent audit record.</p></div><button id="refreshAudit" class="secondary">Refresh history</button></div><div id="activityLog"></div></section>
+  <section class="panel" id="activitySection" data-barber-view="activity"><div class="panel-title"><div><h2>Activity &amp; version history</h2><p>Every saved visit edit creates a dated audit record.</p></div><button id="refreshAudit" class="secondary">Refresh history</button></div><div id="activityLog"></div></section>
   <p class="foot">Prototype only · Fictional seed data · No real WhatsApp delivery · API docs: <a href="/docs">/docs</a></p>
 </main>
 </div>
@@ -108,6 +123,15 @@
   </form>
 </dialog>
 <dialog id="feedbackDialog"><form id="feedbackForm"><h2>Record private feedback</h2><label>Visit<select name="visit_id" id="feedbackVisit" required></select></label><label>Rating<select name="rating"><option value="1">1 — Very poor</option><option value="2">2 — Poor</option><option value="3" selected>3 — Okay</option><option value="4">4 — Good</option><option value="5">5 — Excellent</option></select></label><label>Comment<textarea name="comment" rows="3" placeholder="What could the salon improve?"></textarea></label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Save feedback</button></div></form></dialog>
+<dialog id="visitDetailsDialog" class="visit-details-dialog">
+  <div class="dialog-heading"><div><p class="eyebrow">VISIT RECORD</p><h2 id="visitDetailsTitle">Visit details</h2><p class="muted">Current record and every saved version.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
+  <div id="visitDetailsContent"><p class="empty">Loading visit details…</p></div>
+  <section class="detail-version-section">
+    <div class="panel-title"><div><h3>Version history</h3><p>Newest changes first, with who changed the record and when.</p></div></div>
+    <div id="visitDetailsVersions"><p class="empty">Loading version history…</p></div>
+  </section>
+  <div class="actions"><button type="button" class="secondary close">Close</button><button type="button" id="editVisitFromDetails" class="primary">Edit this record</button></div>
+</dialog>
 <dialog id="historyDialog" class="history-dialog">
   <div class="dialog-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2>Visit history</h2><p class="muted">Previous versions are retained after edits.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
   <div id="historyContent"><p class="empty">Loading history…</p></div>
