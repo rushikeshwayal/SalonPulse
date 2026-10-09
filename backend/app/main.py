@@ -522,30 +522,36 @@ def seed(db: Session, reset: bool = False):
     if reset:
         # Delete demo rows in FK-safe order. Never drop/recreate production tables,
         # which would discard database grants and Row Level Security settings.
-        for model in (MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer, Barber, Branch):
+        for model in (AuditLog, CustomerRating, MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer):
             db.query(model).delete(synchronize_session=False)
         db.commit()
-    if db.query(Branch).count():
+    if db.query(Customer).count() and db.query(Visit).count():
         seed_demo_users(db)
         return
 
-    branches = [
-        Branch(name="The Gentlemen's Club — Koregaon Park", location="Pune"),
-        Branch(name="The Gentlemen's Club — Viman Nagar", location="Pune"),
-        Branch(name="The Gentlemen's Club — Baner", location="Pune"),
-        Branch(name="The Gentlemen's Club — Kalyani Nagar", location="Pune"),
-    ]
-    db.add_all(branches)
-    db.flush()
+    branches = db.query(Branch).order_by(Branch.id).all()
+    if not branches:
+        branches = [
+            Branch(name="The Gentlemen's Club — Koregaon Park", location="Pune"),
+            Branch(name="The Gentlemen's Club — Viman Nagar", location="Pune"),
+            Branch(name="The Gentlemen's Club — Baner", location="Pune"),
+            Branch(name="The Gentlemen's Club — Kalyani Nagar", location="Pune"),
+        ]
+        db.add_all(branches)
+        db.flush()
 
-    barbers = [
-        Barber(branch_id=branches[0].id, name="Aarav Patil"),
-        Barber(branch_id=branches[0].id, name="Rohan Jadhav"),
-        Barber(branch_id=branches[1].id, name="Kabir Shah"),
-        Barber(branch_id=branches[1].id, name="Dev Kulkarni"),
-        Barber(branch_id=branches[2].id, name="Ishaan More"),
-        Barber(branch_id=branches[3].id, name="Arjun Deshmukh"),
-    ]
+    barbers = db.query(Barber).order_by(Barber.id).all()
+    if not barbers:
+        barbers = [
+            Barber(branch_id=branches[0].id, name="Aarav Patil"),
+            Barber(branch_id=branches[0].id, name="Rohan Jadhav"),
+            Barber(branch_id=branches[1].id, name="Kabir Shah"),
+            Barber(branch_id=branches[1].id, name="Dev Kulkarni"),
+            Barber(branch_id=branches[2].id, name="Ishaan More"),
+            Barber(branch_id=branches[3].id, name="Arjun Deshmukh"),
+        ]
+        db.add_all(barbers)
+        db.flush()
     customers = [
         # Seed customers are fictional; keep phone fields empty instead of using fake,
         # potentially callable numbers. Real customer details are entered in the form.
