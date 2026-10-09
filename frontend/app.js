@@ -598,6 +598,7 @@ function useExistingCustomer(id) {
   searchReturningCustomer();
 }
 $("#newVisit").onclick = openVisitDialog;
+$("#newVisitOwner").onclick = openVisitDialog;
 $("#newFeedback").onclick = () => {
   populate();
   if (!$("#feedbackVisit").options.length) {
@@ -669,9 +670,47 @@ $("#visits").addEventListener("click", async e => {
   const edit = e.target.closest("[data-edit-visit]");
   const history = e.target.closest("[data-history-visit]");
   const rate = e.target.closest("[data-rate-visit]");
+  const detailsButton = e.target.closest("[data-open-visit-button]");
+  const row = e.target.closest("[data-open-visit]");
   if (edit) return openEditVisit(Number(edit.dataset.editVisit));
   if (history) return openVisitHistory(Number(history.dataset.historyVisit));
   if (rate) return openCustomerRating(Number(rate.dataset.rateVisit));
+  if (detailsButton) return openVisitDetails(Number(detailsButton.dataset.openVisitButton));
+  if (row) return openVisitDetails(Number(row.dataset.openVisit));
+});
+$("#visits").addEventListener("keydown", e => {
+  const row = e.target.closest("[data-open-visit]");
+  if (!row || e.target.closest("button") || !["Enter", " "].includes(e.key)) return;
+  e.preventDefault();
+  openVisitDetails(Number(row.dataset.openVisit));
+});
+$("#visitDetailsContent").addEventListener("click", e => {
+  const rate = e.target.closest("[data-detail-rate]");
+  if (rate) {
+    $("#visitDetailsDialog").close();
+    openCustomerRating(Number(rate.dataset.detailRate));
+  }
+});
+$("#editVisitFromDetails").addEventListener("click", () => {
+  if (!selectedVisitDetailId) return;
+  const id = selectedVisitDetailId;
+  $("#visitDetailsDialog").close();
+  openEditVisit(id);
+});
+$("#barberCustomers").addEventListener("click", e => {
+  const card = e.target.closest("[data-open-customer]");
+  if (!card) return;
+  const customerId = Number(card.dataset.openCustomer);
+  const recentVisit = data.visits.find(visit => visit.customer_id === customerId);
+  if (!recentVisit) {
+    toast("No recent visit is in the loaded list for this customer yet.");
+    return;
+  }
+  openVisitDetails(recentVisit.id);
+});
+$("#feedback").addEventListener("click", e => {
+  const card = e.target.closest("[data-feedback-visit]");
+  if (card) openVisitDetails(Number(card.dataset.feedbackVisit));
 });
 $("#refreshAudit").addEventListener("click", async () => {
   try {
