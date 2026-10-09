@@ -460,3 +460,45 @@ header{position:relative;z-index:30;gap:12px}
   .customer-visit-version-top time{text-align:left}
 }
 @media(prefers-reduced-motion:reduce){.customer-visit-expanded{animation:none}.customer-visit-chevron{transition:none}}
+
+
+/* Make the whole customer card the disclosure control for their visit timeline */
+details.customer-visit-group>.customer-visit-group-heading{
+  display:flex;
+  width:100%;
+  list-style:none;
+  cursor:pointer;
+  text-align:left;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  border:0;
+  border-bottom:1px solid transparent;
+  transition:background .18s ease,border-color .18s ease;
+}
+details.customer-visit-group>.customer-visit-group-heading::-webkit-details-marker{display:none}
+details.customer-visit-group>.customer-visit-group-heading::marker{content:""}
+details.customer-visit-group>.customer-visit-group-heading:hover{background:#f4f2ff}
+details.customer-visit-group>.customer-visit-group-heading:focus-visible{outline:3px solid #d5ceff;outline-offset:-3px}
+.customer-visit-expand-hint{display:block;font-size:8px!important;color:#7164d8!important;margin-top:1px}
+.customer-group-chevron{
+  width:17px;height:17px;flex:0 0 auto;fill:none;stroke:#8a8da1;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .2s ease,color .2s ease;
+}
+details.customer-visit-group[open]>.customer-visit-group-heading{
+  background:#f7f6ff;
+  border-bottom-color:#e8e5fc;
+}
+details.customer-visit-group[open]>.customer-visit-group-heading .customer-group-chevron{
+  transform:rotate(180deg);color:var(--purple)
+}
+.customer-visit-group-content{overflow:hidden;animation:customerVisitReveal .18s ease-out}
+@media(max-width:520px){
+  .customer-visit-group-heading{gap:8px;padding:13px 11px}
+  .customer-visit-group-main{flex:1;min-width:0}
+  .customer-group-chevron{width:16px;height:16px}
+  .customer-visit-expand-hint{font-size:8px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .customer-group-chevron,details.customer-visit-group>.customer-visit-group-heading{transition:none}
+  .customer-visit-group-content{animation:none}
+}
