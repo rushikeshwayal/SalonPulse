@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import base64
+import hashlib
+import hmac
+import json
 import os
 import re
+import secrets
+import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, case, create_engine, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, and_, case, create_engine, func, or_
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 # Vercel may package the FastAPI module at a different depth than the repo.
@@ -75,6 +81,21 @@ class Barber(Base):
     name: Mapped[str] = mapped_column(String(120))
 
 
+class StaffUser(Base):
+    __tablename__ = "staff_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[str] = mapped_column(String(20))
+    barber_id: Mapped[Optional[int]] = mapped_column(ForeignKey("barbers.id"), nullable=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Customer(Base):
     __tablename__ = "customers"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -82,6 +103,7 @@ class Customer(Base):
     phone: Mapped[str] = mapped_column(String(40), default="")
     location: Mapped[str] = mapped_column(String(160), default="")
     messaging_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("staff_users.id"), nullable=True)
 
 
 class Visit(Base):
@@ -94,6 +116,8 @@ class Visit(Base):
     amount: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     feedback_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("staff_users.id"), nullable=True)
+    updated_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("staff_users.id"), nullable=True)
 
 
 class VisitService(Base):
@@ -133,6 +157,33 @@ class MessageLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("staff_users.id"), nullable=True)
+    actor_username: Mapped[str] = mapped_column(String(80))
+    actor_role: Mapped[str] = mapped_column(String(20))
+    action: Mapped[str] = mapped_column(String(40))
+    entity_type: Mapped[str] = mapped_column(String(60))
+    entity_id: Mapped[int] = mapped_column(Integer)
+    before_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    after_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    change_note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CustomerRating(Base):
+    __tablename__ = "customer_ratings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    visit_id: Mapped[int] = mapped_column(ForeignKey("visits.id", ondelete="CASCADE"), unique=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    barber_user_id: Mapped[int] = mapped_column(ForeignKey("staff_users.id"))
+    rating: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class VisitServiceInput(BaseModel):
     service_name: str = Field(min_length=2, max_length=120)
     quantity: int = Field(ge=1, le=50)
@@ -166,12 +217,173 @@ class RecoveryUpdate(BaseModel):
     resolution_note: str = Field(default="", max_length=2000)
 
 
+class LoginRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class VisitUpdate(BaseModel):
+    branch_id: Optional[int] = None
+    barber_id: Optional[int] = None
+    customer_id: Optional[int] = None
+    completed_at: Optional[datetime] = None
+    services: Optional[list[VisitServiceInput]] = Field(default=None, max_length=10)
+    messaging_consent: Optional[bool] = None
+    change_note: str = Field(default="", max_length=500)
+
+
+class CustomerRatingCreate(BaseModel):
+    visit_id: int
+    rating: int = Field(ge=1, le=5)
+    note: str = Field(default="", max_length=1000)
+
+
 app = FastAPI(
     title="SalonPulse API",
     version="0.1.0",
     description="Salon feedback and service recovery demo. Messaging is mock-only.",
 )
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+
+AUTH_SECRET = os.getenv("APP_AUTH_SECRET")
+if os.getenv("VERCEL") == "1" and not AUTH_SECRET:
+    raise RuntimeError("APP_AUTH_SECRET must be configured for production authentication.")
+AUTH_SECRET = AUTH_SECRET or "local-development-only-not-for-production"
+TOKEN_TTL_SECONDS = 8 * 60 * 60
+PBKDF2_ITERATIONS = 420_000
+
+
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def hash_password(password: str, salt: Optional[bytes] = None) -> str:
+    salt = salt or secrets.token_bytes(18)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${b64url(salt)}${b64url(digest)}"
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        algorithm, iterations, salt_text, expected = encoded.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        salt = b64url_decode(salt_text)
+        candidate = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+        return hmac.compare_digest(b64url(candidate), expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def user_public(user: StaffUser) -> dict:
+    barber = None
+    if user.barber_id:
+        with SessionLocal() as db:
+            barber = db.get(Barber, user.barber_id)
+    return {
+        "id": user.id, "username": user.username, "email": user.email,
+        "display_name": user.display_name, "role": user.role, "barber_id": user.barber_id,
+        "branch_id": barber.branch_id if barber else None,
+        "is_active": user.is_active, "must_change_password": user.must_change_password,
+    }
+
+
+def create_access_token(user: StaffUser) -> str:
+    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = b64url(json.dumps({
+        "sub": str(user.id), "exp": int(time.time()) + TOKEN_TTL_SECONDS,
+        "iat": int(time.time()), "nonce": secrets.token_urlsafe(8),
+    }, separators=(",", ":")).encode())
+    message = f"{header}.{payload}".encode()
+    signature = hmac.new(AUTH_SECRET.encode(), message, hashlib.sha256).digest()
+    return f"{header}.{payload}.{b64url(signature)}"
+
+
+def verify_access_token(token: str) -> Optional[dict]:
+    try:
+        header_text, payload_text, signature_text = token.split(".")
+        header = json.loads(b64url_decode(header_text))
+        if header.get("alg") != "HS256":
+            return None
+        message = f"{header_text}.{payload_text}".encode()
+        expected = b64url(hmac.new(AUTH_SECRET.encode(), message, hashlib.sha256).digest())
+        if not hmac.compare_digest(expected, signature_text):
+            return None
+        payload = json.loads(b64url_decode(payload_text))
+        if int(payload.get("exp", 0)) <= int(time.time()):
+            return None
+        return payload
+    except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def actor_view(user: StaffUser) -> dict:
+    return {
+        "id": user.id, "username": user.username, "email": user.email,
+        "display_name": user.display_name, "role": user.role,
+        "barber_id": user.barber_id, "must_change_password": user.must_change_password,
+    }
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    path = request.url.path
+    if (
+        path == "/" or path == "/api/health" or path == "/api/auth/login"
+        or path.startswith("/static/") or request.method == "OPTIONS"
+    ):
+        return await call_next(request)
+    if not path.startswith("/api/") and path not in {"/docs", "/redoc", "/openapi.json"}:
+        return await call_next(request)
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+    claims = verify_access_token(token) if token else None
+    if not claims:
+        return JSONResponse(status_code=401, content={"detail": "Please sign in to continue."},
+                            headers={"WWW-Authenticate": "Bearer"})
+    try:
+        user_id = int(claims.get("sub", "0"))
+    except (ValueError, TypeError):
+        user_id = 0
+    with SessionLocal() as db:
+        user = db.get(StaffUser, user_id)
+        if not user or not user.is_active:
+            return JSONResponse(status_code=401, content={"detail": "This account is not active."})
+        if user.must_change_password and path not in {"/api/auth/me", "/api/auth/change-password"}:
+            return JSONResponse(status_code=403, content={"detail": "PASSWORD_CHANGE_REQUIRED: Update your temporary password first."})
+        request.state.user = actor_view(user)
+    return await call_next(request)
+
+
+def get_current_user(request: Request) -> dict:
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Please sign in to continue.")
+    return user
+
+
+def require_owner(user: dict = Depends(get_current_user)) -> dict:
+    if user["role"] != "owner":
+        raise HTTPException(status_code=403, detail="Owner access required.")
+    return user
+
+
+def add_audit(db: Session, actor: dict, action: str, entity_type: str, entity_id: int,
+              before_data: Optional[dict], after_data: Optional[dict], change_note: str = "") -> None:
+    db.add(AuditLog(
+        actor_user_id=actor["id"], actor_username=actor["username"], actor_role=actor["role"],
+        action=action, entity_type=entity_type, entity_id=entity_id,
+        before_data=before_data, after_data=after_data, change_note=change_note,
+    ))
 
 SERVICE_CATALOG = [
     {"name": "Haircut", "default_price": 300},
