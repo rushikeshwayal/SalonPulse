@@ -659,405 +659,606 @@ def health():
     return {"status": "ok", "app": "SalonPulse API", "messaging": "mock_only"}
 
 
-@app.get("/api/service-catalog")
-def get_service_catalog():
-    return SERVICE_CATALOG
+def branch_id_for_user(db: Session, user: dict) -> Optional[int]:
+    if user["role"] == "owner":
+        return None
+    barber = db.get(Barber, user.get("barber_id"))
+    return barber.branch_id if barber else None
 
 
-@app.get("/api/branches")
-def get_branches(db: Session = Depends(get_db)):
-    return [{"id": b.id, "name": b.name, "location": b.location}
-            for b in db.query(Branch).order_by(Branch.name).all()]
+def check_visit_access(visit: Visit, user: dict) -> None:
+    if user["role"] == "barber" and visit.barber_id != user.get("barber_id"):
+        raise HTTPException(status_code=403, detail="You can only access visits assigned to your barber account.")
 
 
-@app.get("/api/barbers")
-def get_barbers(branch_id: Optional[int] = None, db: Session = Depends(get_db)):
-    q = db.query(Barber)
-    if branch_id:
-        q = q.filter_by(branch_id=branch_id)
-    return [{"id": x.id, "name": x.name, "branch_id": x.branch_id}
-            for x in q.order_by(Barber.name).all()]
+def visible_customers_query(db: Session, user: dict):
+    query = db.query(Customer)
+    if user["role"] == "barber":
+        branch_id = branch_id_for_user(db, user)
+        visit_customer_ids = db.query(Visit.customer_id).filter(Visit.branch_id == branch_id).distinct()
+        query = query.filter(or_(Customer.id.in_(visit_customer_ids), Customer.created_by_user_id == user["id"]))
+    return query
 
 
-@app.get("/api/customers/search")
-def search_customers(q: str = Query(min_length=1, max_length=120), db: Session = Depends(get_db)):
-    term = q.strip()
-    digits = normalize_phone(term)
-    # Reuse the batched customer/visit summary query; no per-result database queries.
-    customers = get_customers(db)
-    matches = []
-    for customer in customers:
-        name_match = term.casefold() in customer["name"].casefold()
-        phone_digits = normalize_phone(customer["phone"])
-        phone_match = bool(digits) and (
-            phone_digits == digits or (len(digits) >= 3 and digits in phone_digits)
-        )
-        if name_match or phone_match:
-            matches.append(customer)
-    if digits:
-        matches.sort(key=lambda customer: normalize_phone(customer["phone"]) != digits)
-    return matches[:10]
-
-
-@app.get("/api/customers")
-def get_customers(db: Session = Depends(get_db)):
-    # Fetch visit counts and most recent visit once instead of two queries per customer.
-    stats = db.query(
-        Visit.customer_id,
-        func.count(Visit.id).label("visit_count"),
+def customer_rows(db: Session, user: dict) -> list[dict]:
+    visits_query = db.query(
+        Visit.customer_id, func.count(Visit.id).label("visit_count"),
         func.max(Visit.completed_at).label("last_visit"),
-    ).group_by(Visit.customer_id).all()
-    by_customer = {row.customer_id: row for row in stats}
-    customers = db.query(Customer).order_by(Customer.name).all()
+    )
+    if user["role"] == "barber":
+        visits_query = visits_query.filter(Visit.branch_id == branch_id_for_user(db, user))
+    stats = visits_query.group_by(Visit.customer_id).all()
+    stats_map = {row.customer_id: row for row in stats}
     result = []
-    for customer in customers:
-        row = by_customer.get(customer.id)
+    for c in visible_customers_query(db, user).order_by(Customer.name).all():
+        row = stats_map.get(c.id)
         result.append({
-            "id": customer.id,
-            "name": customer.name,
-            "phone": customer.phone,
-            "location": customer.location or "",
-            "messaging_consent": customer.messaging_consent,
+            "id": c.id, "name": c.name, "phone": c.phone, "location": c.location or "",
+            "messaging_consent": c.messaging_consent,
             "visit_count": int(row.visit_count) if row else 0,
             "last_visit": utc_iso(row.last_visit) if row else None,
         })
     return result
 
-@app.get("/api/dashboard")
-def dashboard(db: Session = Depends(get_db)):
-    visit_row = db.query(
-        func.count(Visit.id),
-        func.coalesce(func.sum(Visit.amount), 0),
-    ).one()
-    feedback_row = db.query(
-        func.count(Feedback.id),
-        func.avg(Feedback.rating),
-        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0),
-    ).one()
-    open_tasks = db.query(func.count(RecoveryTask.id)).filter(
-        RecoveryTask.status != "resolved"
-    ).scalar() or 0
-    unique = db.query(func.count(func.distinct(Visit.customer_id))).scalar() or 0
-    repeat_rows = db.query(Visit.customer_id).group_by(Visit.customer_id).having(
-        func.count(Visit.id) > 1
-    ).subquery()
-    repeats = db.query(func.count()).select_from(repeat_rows).scalar() or 0
-    visit_count, revenue = int(visit_row[0]), float(visit_row[1] or 0)
-    feedback_count, average_rating, low_count = feedback_row
-    return {
-        "total_visits": visit_count,
-        "revenue": round(revenue, 2),
-        "feedback_count": int(feedback_count),
-        "low_feedback_count": int(low_count),
-        "open_recovery_tasks": int(open_tasks),
-        "average_rating": round(float(average_rating), 1) if average_rating is not None else None,
-        "feedback_response_rate": round(feedback_count / visit_count * 100, 1) if visit_count else 0,
-        "repeat_customer_rate": round(repeats / unique * 100, 1) if unique else 0,
-        "branches": db.query(func.count(Branch.id)).scalar() or 0,
-        "barbers": db.query(func.count(Barber.id)).scalar() or 0,
-    }
 
-@app.get("/api/visits")
-def get_visits(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
-    # Join related data in one query. Fetch all service lines in one additional query.
-    rows = db.query(Visit, Customer, Branch, Barber, Feedback).join(
+def branch_rows(db: Session, user: dict) -> list[dict]:
+    query = db.query(Branch)
+    if user["role"] == "barber":
+        query = query.filter(Branch.id == branch_id_for_user(db, user))
+    return [{"id": b.id, "name": b.name, "location": b.location}
+            for b in query.order_by(Branch.name).all()]
+
+
+def barber_rows(db: Session, user: dict) -> list[dict]:
+    query = db.query(Barber)
+    if user["role"] == "barber":
+        query = query.filter(Barber.id == user["barber_id"])
+    return [{"id": b.id, "name": b.name, "branch_id": b.branch_id}
+            for b in query.order_by(Barber.name).all()]
+
+
+def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
+    query = db.query(Visit, Customer, Branch, Barber, Feedback, CustomerRating).join(
         Customer, Customer.id == Visit.customer_id
-    ).join(
-        Branch, Branch.id == Visit.branch_id
-    ).join(
+    ).join(Branch, Branch.id == Visit.branch_id).join(
         Barber, Barber.id == Visit.barber_id
-    ).outerjoin(
-        Feedback, Feedback.visit_id == Visit.id
-    ).order_by(Visit.completed_at.desc()).limit(limit).all()
-    visit_ids = [row[0].id for row in rows]
-    service_map = {}
+    ).outerjoin(Feedback, Feedback.visit_id == Visit.id).outerjoin(
+        CustomerRating, CustomerRating.visit_id == Visit.id
+    )
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    rows = query.order_by(Visit.completed_at.desc()).limit(limit).all()
+    visit_ids = [v.id for v, *_ in rows]
+    service_map: dict[int, list[dict]] = {}
     if visit_ids:
-        service_rows = db.query(VisitService).filter(
-            VisitService.visit_id.in_(visit_ids)
-        ).order_by(VisitService.id).all()
-        for service in service_rows:
-            service_map.setdefault(service.visit_id, []).append({
-                "service_name": service.service_name,
-                "quantity": service.quantity,
-                "unit_price": service.unit_price,
-                "line_total": service.line_total,
+        for line in db.query(VisitService).filter(VisitService.visit_id.in_(visit_ids)).order_by(VisitService.id).all():
+            service_map.setdefault(line.visit_id, []).append({
+                "service_name": line.service_name, "quantity": line.quantity,
+                "unit_price": line.unit_price, "line_total": line.line_total,
             })
     return [{
-        "id": visit.id,
-        "customer_id": customer.id,
-        "customer_name": customer.name,
-        "customer_phone": customer.phone,
-        "customer_location": customer.location or "",
-        "branch_id": branch.id,
-        "branch_name": branch.name,
-        "barber_id": barber.id,
-        "barber_name": barber.name,
-        "service_name": visit.service_name,
-        "service_items": service_map.get(visit.id, []),
-        "amount": visit.amount,
-        "completed_at": utc_iso(visit.completed_at),
-        "feedback_requested": visit.feedback_requested,
-        "feedback_received": feedback is not None,
-        "rating": feedback.rating if feedback else None,
-    } for visit, customer, branch, barber, feedback in rows]
+        "id": v.id, "customer_id": c.id, "customer_name": c.name,
+        "customer_phone": c.phone, "customer_location": c.location or "",
+        "branch_id": b.id, "branch_name": b.name, "barber_id": barber.id, "barber_name": barber.name,
+        "service_name": v.service_name, "service_items": service_map.get(v.id, []),
+        "amount": v.amount, "completed_at": utc_iso(v.completed_at),
+        "feedback_requested": v.feedback_requested, "feedback_received": f is not None,
+        "rating": f.rating if f else None, "customer_rating": cr.rating if cr else None,
+        "customer_rating_note": cr.note if cr else "",
+        "can_edit": user["role"] == "owner" or v.barber_id == user.get("barber_id"),
+    } for v, c, b, barber, f, cr in rows]
 
-@app.post("/api/visits", status_code=201)
-def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
-    branch = db.get(Branch, payload.branch_id)
-    barber = db.get(Barber, payload.barber_id)
-    if not branch or not barber:
-        raise HTTPException(404, "Branch or barber not found")
-    if barber.branch_id != branch.id:
-        raise HTTPException(400, "Barber does not belong to the selected branch")
 
+def dashboard_data(db: Session, user: dict) -> dict:
+    vq = db.query(Visit)
+    fq = db.query(Feedback).join(Visit, Visit.id == Feedback.visit_id)
+    tq = db.query(RecoveryTask).join(Feedback, Feedback.id == RecoveryTask.feedback_id).join(
+        Visit, Visit.id == Feedback.visit_id
+    )
+    if user["role"] == "barber":
+        vq = vq.filter(Visit.barber_id == user["barber_id"])
+        fq = fq.filter(Visit.barber_id == user["barber_id"])
+        tq = tq.filter(Visit.barber_id == user["barber_id"])
+    visit_count = vq.count()
+    revenue = float(vq.with_entities(func.coalesce(func.sum(Visit.amount), 0)).scalar() or 0)
+    feedback_count, average, low_count = fq.with_entities(
+        func.count(Feedback.id), func.avg(Feedback.rating),
+        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0)
+    ).one()
+    open_tasks = tq.filter(RecoveryTask.status != "resolved").count()
+    customer_counts = vq.with_entities(Visit.customer_id, func.count(Visit.id).label("cnt")).group_by(Visit.customer_id).all()
+    unique_count = len(customer_counts)
+    repeat_count = sum(1 for row in customer_counts if row.cnt > 1)
+    return {
+        "total_visits": visit_count, "revenue": round(revenue, 2),
+        "feedback_count": int(feedback_count), "low_feedback_count": int(low_count),
+        "open_recovery_tasks": int(open_tasks),
+        "average_rating": round(float(average), 1) if average is not None else None,
+        "feedback_response_rate": round(feedback_count / visit_count * 100, 1) if visit_count else 0,
+        "repeat_customer_rate": round(repeat_count / unique_count * 100, 1) if unique_count else 0,
+        "branches": len(branch_rows(db, user)), "barbers": len(barber_rows(db, user)),
+    }
+
+
+def feedback_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
+    query = db.query(Feedback, Visit, Customer, Branch, Barber, RecoveryTask).join(
+        Visit, Visit.id == Feedback.visit_id
+    ).join(Customer, Customer.id == Visit.customer_id).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(Barber, Barber.id == Visit.barber_id).outerjoin(
+        RecoveryTask, RecoveryTask.feedback_id == Feedback.id
+    )
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    rows = query.order_by(Feedback.created_at.desc()).limit(limit).all()
+    return [{
+        "id": f.id, "visit_id": v.id, "customer_name": c.name, "branch_name": b.name,
+        "barber_name": barber.name, "rating": f.rating, "comment": f.comment,
+        "created_at": utc_iso(f.created_at), "recovery_task_id": t.id if t else None,
+        "recovery_status": t.status if t else None,
+    } for f, v, c, b, barber, t in rows]
+
+
+def task_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
+    query = db.query(RecoveryTask, Feedback, Visit, Customer, Branch, Barber).join(
+        Feedback, Feedback.id == RecoveryTask.feedback_id
+    ).join(Visit, Visit.id == Feedback.visit_id).join(
+        Customer, Customer.id == Visit.customer_id
+    ).join(Branch, Branch.id == Visit.branch_id).join(
+        Barber, Barber.id == Visit.barber_id
+    )
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    rows = query.order_by(RecoveryTask.created_at.desc()).limit(limit).all()
+    return [{
+        "id": t.id, "feedback_id": f.id, "visit_id": v.id, "customer_name": c.name,
+        "branch_name": b.name, "barber_name": barber.name, "rating": f.rating,
+        "comment": f.comment, "status": t.status, "resolution_note": t.resolution_note,
+        "created_at": utc_iso(t.created_at),
+    } for t, f, v, c, b, barber in rows]
+
+
+def insight_data(db: Session, user: dict) -> dict:
+    if user["role"] == "barber":
+        row = db.query(
+            Barber.id.label("barber_id"), Barber.name.label("barber_name"),
+            Branch.name.label("branch_name"), func.count(Visit.id).label("visits"),
+            func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
+            func.count(Feedback.id).label("feedback_count"), func.avg(Feedback.rating).label("average_rating"),
+        ).join(Branch, Branch.id == Barber.branch_id).outerjoin(
+            Visit, Visit.barber_id == Barber.id
+        ).outerjoin(Feedback, Feedback.visit_id == Visit.id).filter(
+            Barber.id == user["barber_id"]
+        ).group_by(Barber.id, Barber.name, Branch.name).first()
+        own = [] if not row else [{
+            "barber_id": row.barber_id, "barber_name": row.barber_name, "branch_name": row.branch_name,
+            "visits": int(row.visits), "revenue": round(float(row.revenue or 0), 2),
+            "feedback_count": int(row.feedback_count),
+            "average_rating": round(float(row.average_rating), 1) if row.average_rating is not None else None,
+        }]
+        return {"branches": [], "barbers": own}
+    branch_q = db.query(
+        Branch.id.label("branch_id"), Branch.name.label("branch_name"),
+        func.count(Visit.id).label("visits"), func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
+        func.count(Feedback.id).label("feedback_count"), func.avg(Feedback.rating).label("average_rating"),
+        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0).label("low_rating_count"),
+    ).outerjoin(Visit, Visit.branch_id == Branch.id).outerjoin(
+        Feedback, Feedback.visit_id == Visit.id
+    ).group_by(Branch.id, Branch.name).all()
+    barber_q = db.query(
+        Barber.id.label("barber_id"), Barber.name.label("barber_name"), Branch.name.label("branch_name"),
+        func.count(Visit.id).label("visits"), func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
+        func.count(Feedback.id).label("feedback_count"), func.avg(Feedback.rating).label("average_rating"),
+    ).join(Branch, Branch.id == Barber.branch_id).outerjoin(
+        Visit, Visit.barber_id == Barber.id
+    ).outerjoin(Feedback, Feedback.visit_id == Visit.id).group_by(
+        Barber.id, Barber.name, Branch.name
+    ).all()
+    return {
+        "branches": [{
+            "branch_id": r.branch_id, "branch_name": r.branch_name, "visits": int(r.visits),
+            "revenue": round(float(r.revenue or 0), 2), "feedback_count": int(r.feedback_count),
+            "average_rating": round(float(r.average_rating), 1) if r.average_rating is not None else None,
+            "low_rating_count": int(r.low_rating_count),
+        } for r in branch_q],
+        "barbers": [{
+            "barber_id": r.barber_id, "barber_name": r.barber_name, "branch_name": r.branch_name,
+            "visits": int(r.visits), "revenue": round(float(r.revenue or 0), 2),
+            "feedback_count": int(r.feedback_count),
+            "average_rating": round(float(r.average_rating), 1) if r.average_rating is not None else None,
+        } for r in barber_q],
+    }
+
+
+def message_rows(db: Session, user: dict, limit: int = 10) -> list[dict]:
+    query = db.query(MessageLog, Visit, Customer).join(
+        Visit, Visit.id == MessageLog.visit_id
+    ).join(Customer, Customer.id == Visit.customer_id)
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    return [{
+        "id": m.id, "visit_id": v.id, "customer_name": c.name, "status": m.status,
+        "message": m.message, "created_at": utc_iso(m.created_at), "channel": "whatsapp_mock",
+    } for m, v, c in query.order_by(MessageLog.created_at.desc()).limit(limit).all()]
+
+
+def visit_snapshot(db: Session, visit: Visit) -> dict:
+    return visit_json(db, visit)
+
+
+def audit_logs_initial(db: Session, user: dict) -> list[dict]:
+    query = db.query(AuditLog)
+    if user["role"] == "barber":
+        ids = db.query(Visit.id).filter(Visit.barber_id == user["barber_id"]).subquery()
+        query = query.filter(or_(
+            AuditLog.actor_user_id == user["id"],
+            and_(AuditLog.entity_type == "visit", AuditLog.entity_id.in_(ids)),
+        ))
+    rows = query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(20).all()
+    return [{
+        "id": r.id, "actor_username": r.actor_username, "actor_role": r.actor_role,
+        "action": r.action, "entity_type": r.entity_type, "entity_id": r.entity_id,
+        "change_note": r.change_note, "created_at": utc_iso(r.created_at),
+    } for r in rows]
+
+
+@app.get("/api/service-catalog")
+def get_service_catalog(user: dict = Depends(get_current_user)):
+    return SERVICE_CATALOG
+
+
+@app.get("/api/branches")
+def get_branches(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    return branch_rows(db, user)
+
+
+@app.get("/api/barbers")
+def get_barbers(branch_id: Optional[int] = None, db: Session = Depends(get_db),
+                user: dict = Depends(get_current_user)):
+    rows = barber_rows(db, user)
+    return [b for b in rows if not branch_id or b["branch_id"] == branch_id]
+
+
+@app.get("/api/customers/search")
+def search_customers(q: str = Query(min_length=1, max_length=120), db: Session = Depends(get_db),
+                     user: dict = Depends(get_current_user)):
+    term, digits = q.strip(), normalize_phone(q.strip())
+    matches = []
+    for customer in customer_rows(db, user):
+        name_match = term.casefold() in customer["name"].casefold()
+        phone_digits = normalize_phone(customer["phone"])
+        phone_match = bool(digits) and (phone_digits == digits or (len(digits) >= 3 and digits in phone_digits))
+        if name_match or phone_match:
+            matches.append(customer)
+    if digits:
+        matches.sort(key=lambda c: normalize_phone(c["phone"]) != digits)
+    return matches[:10]
+
+
+@app.get("/api/customers")
+def get_customers(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    return customer_rows(db, user)
+
+
+@app.get("/api/dashboard")
+def dashboard(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    return dashboard_data(db, user)
+
+
+@app.get("/api/visits")
+def get_visits(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db),
+               user: dict = Depends(get_current_user)):
+    return visit_rows(db, user, limit)
+
+
+@app.get("/api/visits/{visit_id}/history")
+def get_visit_history(visit_id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    visit = db.get(Visit, visit_id)
+    if not visit:
+        raise HTTPException(404, detail="Visit not found.")
+    check_visit_access(visit, user)
+    rows = db.query(AuditLog).filter_by(entity_type="visit", entity_id=visit_id).order_by(
+        AuditLog.created_at.desc(), AuditLog.id.desc()
+    ).limit(100).all()
+    return [{
+        "id": r.id, "actor_username": r.actor_username, "actor_role": r.actor_role,
+        "action": r.action, "before_data": r.before_data, "after_data": r.after_data,
+        "change_note": r.change_note, "created_at": utc_iso(r.created_at),
+    } for r in rows]
+
+
+@app.patch("/api/visits/{visit_id}")
+def update_visit(visit_id: int, payload: VisitUpdate, db: Session = Depends(get_db),
+                 user: dict = Depends(get_current_user)):
+    visit = db.get(Visit, visit_id)
+    if not visit:
+        raise HTTPException(404, detail="Visit not found.")
+    check_visit_access(visit, user)
+    before = visit_snapshot(db, visit)
     if payload.customer_id is not None:
         customer = db.get(Customer, payload.customer_id)
         if not customer:
-            raise HTTPException(404, "Customer not found. Search again and select a customer.")
+            raise HTTPException(404, detail="Customer not found.")
+        if user["role"] == "barber":
+            ids = {x[0] for x in db.query(Visit.customer_id).filter(
+                Visit.branch_id == branch_id_for_user(db, user)
+            ).distinct().all()}
+            if customer.id not in ids:
+                raise HTTPException(403, detail="Customer is not in your branch's records.")
+        visit.customer_id = customer.id
+    if user["role"] == "owner":
+        if payload.branch_id is not None:
+            if not db.get(Branch, payload.branch_id):
+                raise HTTPException(404, detail="Branch not found.")
+            visit.branch_id = payload.branch_id
+        if payload.barber_id is not None:
+            barber = db.get(Barber, payload.barber_id)
+            if not barber:
+                raise HTTPException(404, detail="Barber not found.")
+            if barber.branch_id != visit.branch_id:
+                raise HTTPException(400, detail="Selected barber must belong to the visit branch.")
+            visit.barber_id = barber.id
+    elif payload.branch_id is not None and payload.branch_id != visit.branch_id:
+        raise HTTPException(403, detail="Barbers cannot move visits between branches.")
+    if payload.completed_at is not None:
+        stamp = payload.completed_at
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        visit.completed_at = stamp.astimezone(timezone.utc).replace(tzinfo=None)
+    if payload.messaging_consent is not None:
+        visit.feedback_requested = payload.messaging_consent
+    if payload.services is not None:
+        if not payload.services:
+            raise HTTPException(400, detail="A visit must contain at least one service.")
+        visit.service_name = " + ".join(
+            f"{line.service_name} ×{line.quantity}" if line.quantity > 1 else line.service_name
+            for line in payload.services
+        )
+        visit.amount = round(sum(line.quantity * line.unit_price for line in payload.services), 2)
+        db.query(VisitService).filter_by(visit_id=visit.id).delete(synchronize_session=False)
+        db.flush()
+        for line in payload.services:
+            db.add(VisitService(
+                visit_id=visit.id, service_name=line.service_name, quantity=line.quantity,
+                unit_price=line.unit_price, line_total=round(line.quantity * line.unit_price, 2),
+            ))
+    visit.updated_by_user_id = user["id"]
+    db.flush()
+    after = visit_snapshot(db, visit)
+    add_audit(db, user, "visit.update", "visit", visit.id, before, after, payload.change_note)
+    db.commit()
+    db.refresh(visit)
+    return {"visit": visit_snapshot(db, visit)}
+
+
+@app.post("/api/visits", status_code=201)
+def create_visit(payload: VisitCreate, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    if user["role"] == "barber":
+        assigned = db.get(Barber, user["barber_id"])
+        if not assigned:
+            raise HTTPException(403, detail="This account is not assigned to a barber.")
+        if payload.branch_id != assigned.branch_id:
+            raise HTTPException(403, detail="You can only record visits at your assigned branch.")
+        branch_id, barber_id = assigned.branch_id, assigned.id
     else:
-        customer_name = (payload.customer_name or "").strip()
-        customer_phone = (payload.customer_phone or "").strip()
-        customer_location = (payload.customer_location or "").strip()
-        normalized_phone = normalize_phone(customer_phone)
+        branch_id, barber_id = payload.branch_id, payload.barber_id
+    branch, barber = db.get(Branch, branch_id), db.get(Barber, barber_id)
+    if not branch or not barber:
+        raise HTTPException(404, detail="Branch or barber not found.")
+    if barber.branch_id != branch.id:
+        raise HTTPException(400, detail="Barber does not belong to the selected branch.")
+    if payload.customer_id is not None:
+        customer = db.get(Customer, payload.customer_id)
+        if not customer:
+            raise HTTPException(404, detail="Customer not found. Search again and select a customer.")
+        if user["role"] == "barber":
+            ids = {x[0] for x in db.query(Visit.customer_id).filter(Visit.branch_id == branch_id).distinct().all()}
+            if customer.id not in ids:
+                raise HTTPException(403, detail="Customer is not in your branch's records.")
+    else:
+        name, phone, location = (payload.customer_name or "").strip(), (payload.customer_phone or "").strip(), (payload.customer_location or "").strip()
+        normalized_phone = normalize_phone(phone)
         if len(normalized_phone) < 7 or len(normalized_phone) > 15:
-            raise HTTPException(400, "Enter a valid customer phone number (7–15 digits).")
-        if not customer_name:
-            raise HTTPException(400, "Customer name is required for a new customer.")
+            raise HTTPException(400, detail="Enter a valid customer phone number (7–15 digits).")
+        if not name:
+            raise HTTPException(400, detail="Customer name is required for a new customer.")
         for existing in db.query(Customer).all():
-            if normalized_phone and normalize_phone(existing.phone) == normalized_phone:
-                raise HTTPException(
-                    409,
-                    f"This phone number already belongs to {existing.name}. Search for the returning customer and confirm the match."
-                )
-        customer = Customer(name=customer_name, phone=customer_phone, location=customer_location)
+            if normalize_phone(existing.phone) and normalize_phone(existing.phone) == normalized_phone:
+                raise HTTPException(409, detail="This phone number is already registered. Search for the existing customer.")
+        customer = Customer(name=name, phone=phone, location=location, created_by_user_id=user["id"])
         db.add(customer)
         db.flush()
-
-    service_inputs = payload.services
-    if not service_inputs:
-        # Backward compatibility for older clients that submit a single service/amount.
-        if not payload.service_name or payload.amount is None:
-            raise HTTPException(400, "Add at least one service.")
-        service_inputs = [VisitServiceInput(
-            service_name=payload.service_name, quantity=1, unit_price=payload.amount
-        )]
-    total_amount = round(sum(item.quantity * item.unit_price for item in service_inputs), 2)
-    service_summary = " + ".join(
-        f"{item.service_name} ×{item.quantity}" if item.quantity > 1 else item.service_name
-        for item in service_inputs
+    lines = payload.services or (
+        [VisitServiceInput(service_name=payload.service_name, quantity=1, unit_price=payload.amount)]
+        if payload.service_name and payload.amount is not None else []
     )
+    if not lines:
+        raise HTTPException(400, detail="Add at least one service.")
+    amount = round(sum(line.quantity * line.unit_price for line in lines), 2)
+    summary = " + ".join(f"{line.service_name} ×{line.quantity}" if line.quantity > 1 else line.service_name for line in lines)
     if payload.messaging_consent:
         customer.messaging_consent = True
-
-    # Interpret a missing timestamp as now; normalize supplied local-offset
-    # timestamps to naive UTC for PostgreSQL's timestamp-without-time-zone column.
-    visited_at = payload.completed_at or datetime.now(timezone.utc)
-    if visited_at.tzinfo is None:
-        visited_at = visited_at.replace(tzinfo=timezone.utc)
-    visited_at = visited_at.astimezone(timezone.utc).replace(tzinfo=None)
-
-    v = Visit(
-        customer_id=customer.id, branch_id=branch.id, barber_id=barber.id,
-        service_name=service_summary, amount=total_amount, completed_at=visited_at,
-        feedback_requested=payload.messaging_consent,
+    stamp = payload.completed_at or datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    stamp = stamp.astimezone(timezone.utc).replace(tzinfo=None)
+    visit = Visit(
+        customer_id=customer.id, branch_id=branch.id, barber_id=barber.id, service_name=summary,
+        amount=amount, completed_at=stamp, feedback_requested=payload.messaging_consent,
+        created_by_user_id=user["id"], updated_by_user_id=user["id"],
     )
-    db.add(v)
+    db.add(visit)
     db.flush()
-    for item in service_inputs:
-        line_total = round(item.quantity * item.unit_price, 2)
-        db.add(VisitService(
-            visit_id=v.id, service_name=item.service_name, quantity=item.quantity,
-            unit_price=item.unit_price, line_total=line_total,
-        ))
+    for line in lines:
+        db.add(VisitService(visit_id=visit.id, service_name=line.service_name,
+            quantity=line.quantity, unit_price=line.unit_price,
+            line_total=round(line.quantity * line.unit_price, 2)))
     if payload.messaging_consent:
-        db.add(MessageLog(visit_id=v.id, status="mock_queued", message=message_for(customer.name)))
+        db.add(MessageLog(visit_id=visit.id, status="mock_queued", message=message_for(customer.name)))
+    db.flush()
+    add_audit(db, user, "visit.create", "visit", visit.id, None, visit_snapshot(db, visit), "Visit created")
     db.commit()
-    db.refresh(v)
-    return {
-        "visit": visit_json(db, v),
-        "message_status": "mock_queued" if payload.messaging_consent else "not_requested",
-        "notice": "Demo only: no real WhatsApp message was sent.",
-    }
+    db.refresh(visit)
+    return {"visit": visit_snapshot(db, visit),
+            "message_status": "mock_queued" if payload.messaging_consent else "not_requested",
+            "notice": "Demo only: no real WhatsApp message was sent."}
+
 
 @app.get("/api/feedback")
-def get_feedback(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
-    rows = db.query(Feedback, Visit, Customer, Branch, Barber, RecoveryTask).join(
-        Visit, Visit.id == Feedback.visit_id
-    ).join(
-        Customer, Customer.id == Visit.customer_id
-    ).join(
-        Branch, Branch.id == Visit.branch_id
-    ).join(
-        Barber, Barber.id == Visit.barber_id
-    ).outerjoin(
-        RecoveryTask, RecoveryTask.feedback_id == Feedback.id
-    ).order_by(Feedback.created_at.desc()).limit(limit).all()
-    return [{
-        "id": feedback.id,
-        "visit_id": visit.id,
-        "customer_name": customer.name,
-        "branch_name": branch.name,
-        "barber_name": barber.name,
-        "rating": feedback.rating,
-        "comment": feedback.comment,
-        "created_at": utc_iso(feedback.created_at),
-        "recovery_task_id": task.id if task else None,
-        "recovery_status": task.status if task else None,
-    } for feedback, visit, customer, branch, barber, task in rows]
+def get_feedback(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db),
+                 user: dict = Depends(get_current_user)):
+    return feedback_rows(db, user, limit)
+
 
 @app.post("/api/feedback", status_code=201)
-def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db)):
-    v = db.get(Visit, payload.visit_id)
-    if not v:
-        raise HTTPException(404, "Visit not found")
-    if db.query(Feedback).filter_by(visit_id=v.id).first():
-        raise HTTPException(409, "Feedback already exists for this visit")
-    f = Feedback(visit_id=v.id, rating=payload.rating, comment=payload.comment.strip())
-    db.add(f)
+def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    visit = db.get(Visit, payload.visit_id)
+    if not visit:
+        raise HTTPException(404, detail="Visit not found.")
+    check_visit_access(visit, user)
+    if db.query(Feedback).filter_by(visit_id=visit.id).first():
+        raise HTTPException(409, detail="Feedback already exists for this visit.")
+    feedback = Feedback(visit_id=visit.id, rating=payload.rating, comment=payload.comment.strip())
+    db.add(feedback)
     db.flush()
     if payload.rating <= 2:
-        db.add(RecoveryTask(feedback_id=f.id, status="open"))
+        db.add(RecoveryTask(feedback_id=feedback.id, status="open"))
     db.commit()
-    db.refresh(f)
-    return {"feedback": feedback_json(db, f), "recovery_created": payload.rating <= 2}
+    db.refresh(feedback)
+    return {"feedback": feedback_json(db, feedback), "recovery_created": payload.rating <= 2}
 
 
 @app.get("/api/recovery-tasks")
-def get_tasks(
-    status: Optional[str] = None,
-    limit: int = Query(default=20, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    query = db.query(RecoveryTask, Feedback, Visit, Customer, Branch, Barber).join(
-        Feedback, Feedback.id == RecoveryTask.feedback_id
-    ).join(
-        Visit, Visit.id == Feedback.visit_id
-    ).join(
-        Customer, Customer.id == Visit.customer_id
-    ).join(
-        Branch, Branch.id == Visit.branch_id
-    ).join(
-        Barber, Barber.id == Visit.barber_id
-    )
+def get_tasks(status: Optional[str] = None, limit: int = Query(default=20, ge=1, le=100),
+              db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    rows = task_rows(db, user, limit)
     if status:
         if status not in {"open", "in_progress", "resolved"}:
-            raise HTTPException(400, "Invalid status")
-        query = query.filter(RecoveryTask.status == status)
-    rows = query.order_by(RecoveryTask.created_at.desc()).limit(limit).all()
-    return [{
-        "id": task.id,
-        "feedback_id": feedback.id,
-        "visit_id": visit.id,
-        "customer_name": customer.name,
-        "branch_name": branch.name,
-        "barber_name": barber.name,
-        "rating": feedback.rating,
-        "comment": feedback.comment,
-        "status": task.status,
-        "resolution_note": task.resolution_note,
-        "created_at": utc_iso(task.created_at),
-    } for task, feedback, visit, customer, branch, barber in rows]
+            raise HTTPException(400, detail="Invalid status.")
+        rows = [r for r in rows if r["status"] == status]
+    return rows
+
 
 @app.patch("/api/recovery-tasks/{task_id}")
-def update_task(task_id: int, payload: RecoveryUpdate, db: Session = Depends(get_db)):
-    t = db.get(RecoveryTask, task_id)
-    if not t:
-        raise HTTPException(404, "Recovery task not found")
-    t.status = payload.status
-    t.resolution_note = payload.resolution_note.strip()
+def update_task(task_id: int, payload: RecoveryUpdate, db: Session = Depends(get_db),
+                user: dict = Depends(require_owner)):
+    task = db.get(RecoveryTask, task_id)
+    if not task:
+        raise HTTPException(404, detail="Recovery task not found.")
+    before = task_json(db, task)
+    task.status, task.resolution_note = payload.status, payload.resolution_note.strip()
+    db.flush()
+    add_audit(db, user, "recovery_task.update", "recovery_task", task.id, before,
+              task_json(db, task), payload.resolution_note[:500])
     db.commit()
-    db.refresh(t)
-    return task_json(db, t)
+    db.refresh(task)
+    return task_json(db, task)
 
 
 @app.get("/api/insights")
-def get_insights(db: Session = Depends(get_db)):
-    # Aggregate in SQL; don't load every visit and feedback row per branch/barber.
-    branch_rows = db.query(
-        Branch.id.label("branch_id"),
-        Branch.name.label("branch_name"),
-        func.count(Visit.id).label("visits"),
-        func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
-        func.count(Feedback.id).label("feedback_count"),
-        func.avg(Feedback.rating).label("average_rating"),
-        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0).label("low_rating_count"),
-    ).outerjoin(
-        Visit, Visit.branch_id == Branch.id
-    ).outerjoin(
-        Feedback, Feedback.visit_id == Visit.id
-    ).group_by(Branch.id, Branch.name).all()
-    barber_rows = db.query(
-        Barber.id.label("barber_id"),
-        Barber.name.label("barber_name"),
-        Branch.name.label("branch_name"),
-        func.count(Visit.id).label("visits"),
-        func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
-        func.count(Feedback.id).label("feedback_count"),
-        func.avg(Feedback.rating).label("average_rating"),
-    ).join(
-        Branch, Branch.id == Barber.branch_id
-    ).outerjoin(
-        Visit, Visit.barber_id == Barber.id
-    ).outerjoin(
-        Feedback, Feedback.visit_id == Visit.id
-    ).group_by(Barber.id, Barber.name, Branch.name).all()
-    return {
-        "branches": [{
-            "branch_id": row.branch_id,
-            "branch_name": row.branch_name,
-            "visits": int(row.visits),
-            "revenue": round(float(row.revenue or 0), 2),
-            "feedback_count": int(row.feedback_count),
-            "average_rating": round(float(row.average_rating), 1) if row.average_rating is not None else None,
-            "low_rating_count": int(row.low_rating_count),
-        } for row in branch_rows],
-        "barbers": [{
-            "barber_id": row.barber_id,
-            "barber_name": row.barber_name,
-            "branch_name": row.branch_name,
-            "visits": int(row.visits),
-            "revenue": round(float(row.revenue or 0), 2),
-            "feedback_count": int(row.feedback_count),
-            "average_rating": round(float(row.average_rating), 1) if row.average_rating is not None else None,
-        } for row in barber_rows],
-    }
+def get_insights(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    return insight_data(db, user)
+
 
 @app.get("/api/messages")
-def get_messages(limit: int = Query(default=10, ge=1, le=50), db: Session = Depends(get_db)):
-    rows = db.query(MessageLog, Visit, Customer).join(
-        Visit, Visit.id == MessageLog.visit_id
-    ).join(
-        Customer, Customer.id == Visit.customer_id
-    ).order_by(MessageLog.created_at.desc()).limit(limit).all()
+def get_messages(limit: int = Query(default=10, ge=1, le=50), db: Session = Depends(get_db),
+                 user: dict = Depends(get_current_user)):
+    return message_rows(db, user, limit)
+
+
+@app.get("/api/audit-logs")
+def get_audit_logs(limit: int = Query(default=50, ge=1, le=100), db: Session = Depends(get_db),
+                   user: dict = Depends(get_current_user)):
+    query = db.query(AuditLog)
+    if user["role"] == "barber":
+        visit_ids = db.query(Visit.id).filter(Visit.barber_id == user["barber_id"]).subquery()
+        query = query.filter(or_(AuditLog.actor_user_id == user["id"],
+            and_(AuditLog.entity_type == "visit", AuditLog.entity_id.in_(visit_ids))))
+    rows = query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).all()
     return [{
-        "id": message.id,
-        "visit_id": visit.id,
-        "customer_name": customer.name,
-        "status": message.status,
-        "message": message.message,
-        "created_at": utc_iso(message.created_at),
-        "channel": "whatsapp_mock",
-    } for message, visit, customer in rows]
+        "id": r.id, "actor_user_id": r.actor_user_id, "actor_username": r.actor_username,
+        "actor_role": r.actor_role, "action": r.action, "entity_type": r.entity_type,
+        "entity_id": r.entity_id, "before_data": r.before_data, "after_data": r.after_data,
+        "change_note": r.change_note, "created_at": utc_iso(r.created_at),
+    } for r in rows]
+
+
+@app.get("/api/customer-ratings")
+def get_customer_ratings(limit: int = Query(default=50, ge=1, le=100), db: Session = Depends(get_db),
+                         user: dict = Depends(get_current_user)):
+    query = db.query(CustomerRating, Visit, Customer, StaffUser).join(
+        Visit, Visit.id == CustomerRating.visit_id
+    ).join(Customer, Customer.id == CustomerRating.customer_id).join(
+        StaffUser, StaffUser.id == CustomerRating.barber_user_id)
+    if user["role"] == "barber":
+        query = query.filter(CustomerRating.barber_user_id == user["id"])
+    rows = query.order_by(CustomerRating.created_at.desc()).limit(limit).all()
+    return [{
+        "id": r.id, "visit_id": v.id, "customer_id": c.id, "customer_name": c.name,
+        "barber_username": staff.username, "rating": r.rating, "note": r.note,
+        "created_at": utc_iso(r.created_at),
+    } for r, v, c, staff in rows]
+
+
+@app.post("/api/customer-ratings", status_code=201)
+def create_customer_rating(payload: CustomerRatingCreate, db: Session = Depends(get_db),
+                           user: dict = Depends(get_current_user)):
+    if user["role"] != "barber":
+        raise HTTPException(403, detail="Customer interaction ratings can only be recorded by the assigned barber.")
+    visit = db.get(Visit, payload.visit_id)
+    if not visit:
+        raise HTTPException(404, detail="Visit not found.")
+    check_visit_access(visit, user)
+    rating = db.query(CustomerRating).filter_by(visit_id=visit.id).first()
+    before = None if not rating else {"rating": rating.rating, "note": rating.note, "customer_id": rating.customer_id}
+    action = "customer_rating.create"
+    if rating:
+        rating.rating, rating.note, rating.updated_at = payload.rating, payload.note.strip(), datetime.utcnow()
+        action = "customer_rating.update"
+    else:
+        rating = CustomerRating(visit_id=visit.id, customer_id=visit.customer_id,
+            barber_user_id=user["id"], rating=payload.rating, note=payload.note.strip())
+        db.add(rating)
+    db.flush()
+    after = {"rating": rating.rating, "note": rating.note, "customer_id": rating.customer_id}
+    add_audit(db, user, action, "customer_rating", rating.id or visit.id, before, after,
+              "Visit-specific customer interaction note")
+    db.commit()
+    db.refresh(rating)
+    return {"id": rating.id, "visit_id": rating.visit_id, "rating": rating.rating, "note": rating.note}
+
+
+@app.get("/api/staff-users")
+def get_staff_users(db: Session = Depends(get_db), user: dict = Depends(require_owner)):
+    staff_rows = db.query(StaffUser).order_by(StaffUser.role, StaffUser.display_name).all()
+    barbers = {b.id: b for b in db.query(Barber).all()}
+    branches = {b.id: b for b in db.query(Branch).all()}
+    return [{
+        "id": staff.id, "username": staff.username, "email": staff.email,
+        "display_name": staff.display_name, "role": staff.role, "barber_id": staff.barber_id,
+        "branch_name": branches.get(barbers[staff.barber_id].branch_id).name
+            if staff.barber_id in barbers and barbers[staff.barber_id].branch_id in branches else "",
+        "is_active": staff.is_active, "must_change_password": staff.must_change_password,
+    } for staff in staff_rows]
+
 
 @app.post("/api/demo/reset")
-def reset_demo():
-    with SessionLocal() as db:
-        seed(db, reset=True)
-    return {"status": "ok", "message": "Demo data reset"}
+def reset_demo(user: dict = Depends(require_owner), db: Session = Depends(get_db)):
+    for model in (AuditLog, CustomerRating, MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer):
+        db.query(model).delete(synchronize_session=False)
+    db.commit()
+    seed(db, reset=False)
+    return {"status": "ok", "message": "Demo activity reset"}
+
 
 @app.get("/api/bootstrap")
-def bootstrap(db: Session = Depends(get_db)):
-    """One round-trip for the first dashboard paint; subroutes still work independently."""
+def bootstrap(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     return {
-        "dashboard": dashboard(db),
-        "branches": get_branches(db),
-        "barbers": get_barbers(None, db),
-        "customers": get_customers(db),
-        "visits": get_visits(20, db),
-        "feedback": get_feedback(20, db),
-        "tasks": get_tasks(None, 20, db),
-        "insights": get_insights(db),
-        "messages": get_messages(10, db),
-        "serviceCatalog": get_service_catalog(),
+        "user": user, "dashboard": dashboard_data(db, user),
+        "branches": branch_rows(db, user), "barbers": barber_rows(db, user),
+        "customers": customer_rows(db, user), "visits": visit_rows(db, user, 20),
+        "feedback": feedback_rows(db, user, 20), "tasks": task_rows(db, user, 20),
+        "insights": insight_data(db, user),
+        "messages": message_rows(db, user, 10) if user["role"] == "owner" else [],
+        "serviceCatalog": SERVICE_CATALOG, "auditLogs": audit_logs_initial(db, user),
     }
-
