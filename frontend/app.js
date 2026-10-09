@@ -47,6 +47,126 @@ function toast(s) {
   t.style.display = "block";
   setTimeout(() => t.style.display = "none", 4000);
 }
+
+function showLogin(message = "") {
+  authUser = null;
+  $("#appShell").hidden = true;
+  $("#loginScreen").hidden = false;
+  $("#passwordChangeScreen").hidden = true;
+  $("#loginError").hidden = !message;
+  $("#loginError").textContent = message;
+  $("#loginPassword").value = "";
+}
+function showPasswordChange() {
+  $("#appShell").hidden = true;
+  $("#loginScreen").hidden = true;
+  $("#passwordChangeScreen").hidden = false;
+  $("#passwordChangeError").hidden = true;
+}
+function applyRoleUi(user) {
+  authUser = user;
+  $("#loginScreen").hidden = true;
+  $("#passwordChangeScreen").hidden = true;
+  $("#appShell").hidden = false;
+  $("#currentUser").textContent = user.display_name || user.username;
+  $("#currentRole").textContent = user.role === "owner" ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
+  const owner = user.role === "owner";
+  document.querySelectorAll("[data-owner-only]").forEach(el => { el.hidden = !owner; });
+  $("#workspaceEyebrow").textContent = owner ? "OWNER OVERVIEW" : "BARBER WORKSPACE";
+  $("#workspaceTitle").innerHTML = owner ? "Your business,<br>at a glance." : "Every visit.<br>Every detail.";
+  $("#workspaceSubtitle").textContent = owner
+    ? "Branch performance, employee results, revenue and guest recovery in one place."
+    : "Your assigned visits, customer history and a clear record of every change.";
+  $("#visitListTitle").textContent = owner ? "Recent visits across all stores" : "Your recent visits";
+  $("#visitListSubtitle").textContent = owner
+    ? "Edit a visit or inspect the full version history."
+    : "Only visits assigned to your barber account. Changes are versioned.";
+}
+async function initAuth() {
+  if (!sessionStorage.getItem("salonpulse_token")) {
+    showLogin();
+    return;
+  }
+  try {
+    const user = await api("/api/auth/me");
+    if (user.must_change_password) {
+      showPasswordChange();
+      return;
+    }
+    await load();
+  } catch (e) {
+    showLogin(e.status === 401 ? "" : e.message);
+  }
+}
+$("#loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const submit = $("#loginButton");
+  const form = new FormData(e.target);
+  const error = $("#loginError");
+  error.hidden = true;
+  submit.disabled = true;
+  submit.textContent = "Signing in…";
+  try {
+    const result = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        identifier: String(form.get("identifier") || "").trim(),
+        password: String(form.get("password") || "")
+      })
+    });
+    sessionStorage.setItem("salonpulse_token", result.access_token);
+    if (result.user.must_change_password) showPasswordChange();
+    else await load();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    submit.disabled = false;
+    submit.innerHTML = 'Sign in <span>→</span>';
+  }
+};
+$("#passwordChangeForm").onsubmit = async e => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const next = String(form.get("new_password") || "");
+  const confirm = $("#confirmPassword").value;
+  const error = $("#passwordChangeError");
+  if (next !== confirm) {
+    error.textContent = "The new passwords do not match.";
+    error.hidden = false;
+    return;
+  }
+  const button = $("#changePasswordButton");
+  button.disabled = true;
+  button.textContent = "Saving…";
+  error.hidden = true;
+  try {
+    await api("/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({
+        current_password: String(form.get("current_password") || ""),
+        new_password: next
+      })
+    });
+    e.target.reset();
+    toast("Password updated. Welcome to SalonPulse.");
+    await load();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.innerHTML = 'Save new password <span>→</span>';
+  }
+};
+function signOut() {
+  sessionStorage.removeItem("salonpulse_token");
+  $("#loginForm").reset();
+  $("#passwordChangeForm").reset();
+  showLogin();
+}
+$("#logout").addEventListener("click", signOut);
+$("#cancelPasswordChange").addEventListener("click", signOut);
 async function load() {
   try {
     const payload = await api("/api/bootstrap");
