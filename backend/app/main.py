@@ -488,6 +488,36 @@ def task_json(db: Session, t: RecoveryTask) -> dict:
     }
 
 
+def seed_demo_users(db: Session) -> None:
+    seeds = [
+        ("owner", "owner@salonpulse.demo", "SalonPulse Owner", "owner", None,
+         "pbkdf2_sha256$420000$rgc7iELvo2Hh0ct31Qr9cfG7$YoHf6h5XjLIguUMwtydvEbRQtcgRqt3HvXebYcKl2RE"),
+        ("aarav", "aarav.patil@salonpulse.demo", "Aarav Patil", "barber", 1,
+         "pbkdf2_sha256$420000$w7zWB5HuL6yCKqWbXu2yRgz8$-8vxoyUebQVitxwpzC8TQRqQ4OC3Wb_6-mXy8bTOo_o"),
+        ("rohan", "rohan.jadhav@salonpulse.demo", "Rohan Jadhav", "barber", 2,
+         "pbkdf2_sha256$420000$NKRdXyBel7zv7Ww_58_TS3Vx$n5mizeA-wYAOYGDVaHGZMrMH1XHm-OEwFWJtKXCatrU"),
+        ("kabir", "kabir.shah@salonpulse.demo", "Kabir Shah", "barber", 3,
+         "pbkdf2_sha256$420000$jbYrAb3Nwep9jJIqcFUFLiVV$7VO-yklqk_Dmlvao57KGYydVGCQZAc4frUer9R7bivM"),
+        ("dev", "dev.kulkarni@salonpulse.demo", "Dev Kulkarni", "barber", 4,
+         "pbkdf2_sha256$420000$rJ6-JDSluWWFx4EHUkK9tc8I$jNZecAvQETD_63p-yr3AfBCme1Yy_-K4eMOa_R_7aYo"),
+        ("ishaan", "ishaan.more@salonpulse.demo", "Ishaan More", "barber", 5,
+         "pbkdf2_sha256$420000$gCGjppxtE6oTzRJJiYnBRVmd$Pfkor6KFoFIcoWmrwFk6bNj8-HvglCQ4rIoNh4rvFNw"),
+        ("arjun", "arjun.deshmukh@salonpulse.demo", "Arjun Deshmukh", "barber", 6,
+         "pbkdf2_sha256$420000$VhPB6_LQmQFGtrNh9RSq7qsN$76dVSlme0o1BDB-K-N5QmiUzOdxhtqoTbhay6aCK4dc"),
+    ]
+    for username, email, display_name, role, barber_id, password_hash_value in seeds:
+        exists = db.query(StaffUser.id).filter(
+            or_(StaffUser.username == username, StaffUser.email == email)
+        ).first()
+        if not exists:
+            db.add(StaffUser(
+                username=username, email=email, display_name=display_name, role=role,
+                barber_id=barber_id, password_hash=password_hash_value,
+                is_active=True, must_change_password=True,
+            ))
+    db.commit()
+
+
 def seed(db: Session, reset: bool = False):
     if reset:
         # Delete demo rows in FK-safe order. Never drop/recreate production tables,
@@ -496,6 +526,7 @@ def seed(db: Session, reset: bool = False):
             db.query(model).delete(synchronize_session=False)
         db.commit()
     if db.query(Branch).count():
+        seed_demo_users(db)
         return
 
     branches = [
@@ -565,6 +596,7 @@ def seed(db: Session, reset: bool = False):
             if rating <= 2:
                 db.add(RecoveryTask(feedback_id=f.id, status="in_progress" if rating == 2 else "open"))
     db.commit()
+    seed_demo_users(db)
 
 
 @app.on_event("startup")
@@ -576,6 +608,45 @@ def startup():
         Base.metadata.create_all(bind=engine)
         with SessionLocal() as db:
             seed(db)
+
+
+@app.post("/api/auth/login")
+def auth_login(payload: LoginRequest, db: Session = Depends(get_db)):
+    identifier = payload.identifier.strip().casefold()
+    user = db.query(StaffUser).filter(
+        or_(func.lower(StaffUser.username) == identifier, func.lower(StaffUser.email) == identifier)
+    ).first()
+    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect username/email or password.")
+    return {
+        "access_token": create_access_token(user),
+        "token_type": "bearer",
+        "user": actor_view(user),
+        "expires_in": TOKEN_TTL_SECONDS,
+    }
+
+
+@app.get("/api/auth/me")
+def auth_me(user: dict = Depends(get_current_user)):
+    return user
+
+
+@app.post("/api/auth/change-password")
+def auth_change_password(payload: ChangePasswordRequest, user: dict = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    record = db.get(StaffUser, user["id"])
+    if not record or not verify_password(payload.current_password, record.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="Choose a different new password.")
+    before = {"must_change_password": record.must_change_password}
+    record.password_hash = hash_password(payload.new_password)
+    record.must_change_password = False
+    record.updated_at = datetime.utcnow()
+    add_audit(db, user, "credential.change", "staff_user", record.id, before,
+              {"must_change_password": False}, "Password changed by account holder")
+    db.commit()
+    return {"status": "ok", "user": {**user, "must_change_password": False}}
 
 
 @app.get("/", include_in_schema=False)
