@@ -6,3 +6,7 @@ from ...common.services.customers import get_customer_review_history, list_custo
 def list_owner_customers(db: Session, user: dict): return list_customers(db, user)
 def search_owner_customers(db: Session, user: dict, q: str): return search_customers(db, user, q)
 def owner_customer_reviews(db: Session, user: dict, customer_id: int): return get_customer_review_history(db, user, customer_id)
+
+def list_customers(db: Session, user: dict): return list_owner_customers(db, user)
+def search_customers(db: Session, user: dict, q: str): return search_owner_customers(db, user, q)
+def customer_reviews(db: Session, user: dict, customer_id: int): return owner_customer_reviews(db, user, customer_id)

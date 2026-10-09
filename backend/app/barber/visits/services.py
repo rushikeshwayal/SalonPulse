@@ -8,3 +8,5 @@ def list_barber_visits(db: Session, user: dict, limit: int = 20): return list_vi
 def create(db: Session, user: dict, payload: VisitCreate): return create_visit(db, user, payload)
 def update(db: Session, user: dict, visit_id: int, payload: VisitUpdate): return update_visit(db, user, visit_id, payload)
 def history(db: Session, user: dict, visit_id: int): return get_visit_history(db, user, visit_id)
+
+def list_visits(db: Session, user: dict, limit: int = 20): return list_barber_visits(db, user, limit)
