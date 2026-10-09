@@ -2,6 +2,11 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const money = n => "₹" + Number(n || 0).toLocaleString("en-IN", {maximumFractionDigits: 2});
 const date = s => s ? new Date(s).toLocaleDateString("en-IN", {day:"2-digit",month:"short"}) : "—";
+const dateTime = s => s ? new Date(s).toLocaleString("en-IN", {day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+const localDateTimeValue = d => {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+};
 const normalizePhone = value => {
   let digits = String(value || "").replace(/\D/g, "");
   if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
@@ -14,6 +19,7 @@ let selectedCustomerCandidate = null;
 let confirmedCustomer = null;
 let customerSearchTimer = null;
 let customerSearchSequence = 0;
+let lastCustomerSearchMatches = [];
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {headers: {"Content-Type":"application/json"}, ...opts});
@@ -80,7 +86,7 @@ function render() {
   $("#visits").innerHTML = `<div class="table-wrap"><table class="table"><thead><tr>
     <th>CUSTOMER / CONTACT</th><th>BRANCH</th><th>SERVICES</th><th>TOTAL</th><th>RATING</th>
     </tr></thead><tbody>${data.visits.slice(0,8).map(v => `
-      <tr><td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">${date(v.completed_at)}</span></td>
+      <tr><td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">Visited ${dateTime(v.completed_at)}</span></td>
       <td>${esc(v.branch_name.replace("The Gentlemen's Club — ",""))}</td><td>${esc(v.service_name)}</td><td>${money(v.amount)}</td><td>${v.rating ?? "Awaiting"}</td></tr>`).join("")}</tbody></table></div>`;
 
   $("#messages").innerHTML = data.messages.slice(0,5).map(m => `
@@ -107,8 +113,12 @@ function openVisitDialog() {
   confirmedCustomer = null;
   $("#customerSearch").value = "";
   $("#customerSearchResults").innerHTML = '<p class="empty">Enter at least 3 characters to search existing customers.</p>';
+  $("#customerSearchLabel").hidden = false;
+  $("#customerSearchResults").hidden = false;
   $("#selectedCustomerConfirm").hidden = true;
   $("#newCustomerMatchNotice").hidden = true;
+  $("#visitDateTime").value = localDateTimeValue(new Date());
+  lastCustomerSearchMatches = [];
   toggleCustomerType();
   populate();
   $("#serviceRows").innerHTML = "";
@@ -130,6 +140,8 @@ function toggleCustomerType() {
     $("#selectedCustomerConfirm").hidden = true;
   } else {
     $("#newCustomerMatchNotice").hidden = true;
+    $("#customerSearchLabel").hidden = false;
+    $("#customerSearchResults").hidden = false;
   }
 }
 function addServiceRow(seed = {}) {
@@ -175,6 +187,7 @@ function calcTotal() {
 }
 function renderCustomerResults(matches, term) {
   const box = $("#customerSearchResults");
+  lastCustomerSearchMatches = matches;
   if (!matches.length) {
     box.innerHTML = `<p class="empty">No customer found for “${esc(term)}”. If they're new, switch to New customer.</p>`;
     return;
@@ -189,6 +202,8 @@ async function searchReturningCustomer() {
   const requestId = ++customerSearchSequence;
   selectedCustomerCandidate = null;
   confirmedCustomer = null;
+  $("#customerSearchLabel").hidden = false;
+  $("#customerSearchResults").hidden = false;
   $("#selectedCustomerConfirm").hidden = true;
   if (term.length < 3) {
     $("#customerSearchResults").innerHTML = '<p class="empty">Enter at least 3 characters to search existing customers.</p>';
@@ -226,21 +241,22 @@ async function checkNewCustomerPhone() {
   }
 }
 function reviewCustomer(id) {
-  const candidate = data.customers.find(c => c.id === id) ||
-    window.lastCustomerSearchMatches?.find(c => c.id === id) || selectedCustomerCandidate;
-  // Search result details may include customers not in the initial dashboard data.
+  const candidate = lastCustomerSearchMatches.find(c => c.id === id) ||
+    data.customers.find(c => c.id === id) || selectedCustomerCandidate;
   if (!candidate || candidate.id !== id) {
-    searchReturningCustomer();
+    toast("Please search for the customer again.");
     return;
   }
   selectedCustomerCandidate = candidate;
   confirmedCustomer = null;
+  $("#customerSearchLabel").hidden = true;
+  $("#customerSearchResults").hidden = true;
   const card = $("#selectedCustomerConfirm");
-  card.innerHTML = `<div class="selected-customer-title">Confirm customer details</div>
+  card.innerHTML = `<div class="selected-customer-title">Is this the right client?</div>
     <strong>${esc(candidate.name)}</strong>
-    <div class="meta">Phone: ${esc(candidate.phone || "Not saved")} · Location: ${esc(candidate.location || "Not added")}</div>
-    <div class="meta">${candidate.visit_count} previous visit${candidate.visit_count===1?"":"s"}</div>
-    <div class="confirm-actions"><button type="button" class="primary" data-confirm-customer="${candidate.id}">Yes, use this customer</button><button type="button" class="secondary" data-change-customer>Choose another</button></div>`;
+    <div class="client-profile-details"><span><b>Phone</b> ${esc(candidate.phone || "Not saved")}</span><span><b>Area</b> ${esc(candidate.location || "Not added")}</span></div>
+    <div class="meta">${candidate.visit_count} previous visit${candidate.visit_count===1?"":"s"}${candidate.last_visit ? " · Last visit " + dateTime(candidate.last_visit) : ""}</div>
+    <div class="confirm-actions"><button type="button" class="primary" data-confirm-customer="${candidate.id}">Confirm client</button><button type="button" class="secondary" data-change-customer>Search another</button></div>`;
   card.hidden = false;
 }
 function useExistingCustomer(id) {
@@ -283,6 +299,7 @@ $("#customerSearchResults").addEventListener("click", async e => {
     const matches = await api("/api/customers/search?q=" + encodeURIComponent(searchTerm));
     const candidate = matches.find(c => c.id === id);
     if (!candidate) return toast("Customer result is no longer available. Search again.");
+    lastCustomerSearchMatches = matches;
     selectedCustomerCandidate = candidate;
     reviewCustomer(id);
   } catch (err) { toast(err.message); }
@@ -293,17 +310,24 @@ $("#selectedCustomerConfirm").addEventListener("click", e => {
     if (!selectedCustomerCandidate || selectedCustomerCandidate.id !== Number(yes.dataset.confirmCustomer)) return;
     confirmedCustomer = selectedCustomerCandidate;
     const c = confirmedCustomer;
-    $("#selectedCustomerConfirm").innerHTML = `<div class="confirmed-banner">✓ Customer confirmed</div><strong>${esc(c.name)}</strong>
-      <div class="meta">${esc(c.phone || "No phone saved")} · ${esc(c.location || "Location not added")}</div>
-      <button type="button" class="text-action" data-change-customer>Change customer</button>`;
-    toast("Returning customer confirmed.");
+    $("#customerSearchLabel").hidden = true;
+    $("#customerSearchResults").hidden = true;
+    $("#selectedCustomerConfirm").innerHTML = `<div class="confirmed-banner">✓ CLIENT CONFIRMED</div><strong>${esc(c.name)}</strong>
+      <div class="client-profile-details"><span><b>Phone</b> ${esc(c.phone || "No phone saved")}</span><span><b>Area</b> ${esc(c.location || "Not added")}</span></div>
+      <div class="meta">${c.visit_count} previous visit${c.visit_count===1?"":"s"}${c.last_visit ? " · Last visit " + dateTime(c.last_visit) : ""}</div>
+      <button type="button" class="text-action" data-change-customer>Change / search another client</button>`;
+    toast("Client confirmed. Add visit details below.");
   }
   if (e.target.closest("[data-change-customer]")) {
     confirmedCustomer = null;
     selectedCustomerCandidate = null;
+    lastCustomerSearchMatches = [];
     $("#selectedCustomerConfirm").hidden = true;
+    $("#customerSearchLabel").hidden = false;
+    $("#customerSearchResults").hidden = false;
+    $("#customerSearch").value = "";
+    $("#customerSearchResults").innerHTML = '<p class="empty">Enter at least 3 characters to search existing customers.</p>';
     $("#customerSearch").focus();
-    searchReturningCustomer();
   }
 });
 $("#newCustomerMatchNotice").addEventListener("click", e => {
@@ -320,9 +344,24 @@ $("#visitForm").onsubmit = async e => {
     toast("Check each service, quantity, and price.");
     return;
   }
+  const visitDateTimeValue = $("#visitDateTime").value;
+  if (!visitDateTimeValue) {
+    toast("Please enter the visit date and time.");
+    return;
+  }
+  const completedAt = new Date(visitDateTimeValue);
+  if (Number.isNaN(completedAt.getTime())) {
+    toast("Please enter a valid visit date and time.");
+    return;
+  }
+  if (completedAt.getTime() > Date.now() + 60_000) {
+    toast("A completed visit cannot be in the future. Check the date and time.");
+    return;
+  }
   const payload = {
     branch_id: Number($("#branch").value),
     barber_id: Number($("#barber").value),
+    completed_at: completedAt.toISOString(),
     services,
     messaging_consent: $("input[name='messaging_consent']").checked
   };
