@@ -1024,6 +1024,11 @@ def update_visit(visit_id: int, payload: VisitUpdate, db: Session = Depends(get_
     check_latest_visit_editable(db, visit)
     before = visit_snapshot(db, visit)
     if payload.customer_id is not None:
+        if payload.customer_id != visit.customer_id:
+            raise HTTPException(
+                status_code=400,
+                detail="A visit cannot be reassigned to another customer during editing. Create a new visit for a different customer.",
+            )
         customer = db.get(Customer, payload.customer_id)
         if not customer:
             raise HTTPException(404, detail="Customer not found.")
