@@ -35,17 +35,26 @@ function toast(s) {
 }
 async function load() {
   try {
-    const [dashboard, branches, barbers, customers, visits, feedback, tasks, insights, messages, serviceCatalog] =
-      await Promise.all([
-        "/api/dashboard", "/api/branches", "/api/barbers", "/api/customers",
-        "/api/visits", "/api/feedback", "/api/recovery-tasks", "/api/insights",
-        "/api/messages", "/api/service-catalog"
-      ].map(api));
-    data = {dashboard, branches, barbers, customers, visits, feedback, tasks, insights, messages, serviceCatalog};
+    // One serverless request avoids fanning out to ten cold starts on initial page load.
+    const payload = await api("/api/bootstrap");
+    data = {
+      dashboard: payload.dashboard,
+      branches: payload.branches,
+      barbers: payload.barbers,
+      customers: payload.customers,
+      visits: payload.visits,
+      feedback: payload.feedback,
+      tasks: payload.tasks,
+      insights: payload.insights,
+      messages: payload.messages,
+      serviceCatalog: payload.serviceCatalog
+    };
     render();
     populate();
+    document.body.classList.add("data-loaded");
   } catch (e) {
     toast("API error: " + e.message);
+    document.body.classList.add("data-load-failed");
   }
 }
 function render() {
