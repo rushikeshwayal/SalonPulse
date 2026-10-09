@@ -164,6 +164,8 @@ def test_roles_audit_versions_and_barber_rating():
         assert created.status_code == 201, created.text
         visit = created.json()["visit"]
 
+        assert client.get("/api/audit-logs").status_code == 200
+
         edited = client.patch(f"/api/visits/{visit['id']}", json={
             "services": [
                 {"service_name": "Haircut", "quantity": 1, "unit_price": 350},
@@ -185,7 +187,7 @@ def test_roles_audit_versions_and_barber_rating():
         barber_visits = client.get("/api/visits").json()
         assert all(item["barber_id"] == 1 for item in barber_visits)
         assert client.get("/api/staff-users").status_code == 403
-        assert client.get("/api/audit-logs").status_code == 200
+        assert client.get("/api/audit-logs").status_code == 403
 
         own_branch = next(b for b in client.get("/api/branches").json())
         created_by_barber = client.post("/api/visits", json={
@@ -328,6 +330,15 @@ def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
         customer_ids = {customer["id"] for customer in client.get("/api/customers").json()}
         assert customer_id in customer_ids
         assert hidden_customer_id not in customer_ids
+
+        # Customer reviews appear as visit-linked notifications, not audit-log entries.
+        notifications = client.get("/api/notifications")
+        assert notifications.status_code == 200, notifications.text
+        notification_payload = notifications.json()
+        assert notification_payload["count"] == 1
+        assert notification_payload["notifications"][0]["visit_id"] == own_visit_id
+        assert notification_payload["notifications"][0]["comment"] if "comment" in notification_payload["notifications"][0] else True
+        assert client.get("/api/audit-logs").status_code == 403
 
         reviews = client.get(f"/api/customers/{customer_id}/reviews")
         assert reviews.status_code == 200, reviews.text
