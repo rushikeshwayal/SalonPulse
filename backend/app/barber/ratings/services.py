@@ -1,8 +1,8 @@
-"""Barber customer-interaction rating operations."""
+"""Barber interaction rating view and create/update workflow."""
 
 from sqlalchemy.orm import Session
 from ...schemas import CustomerRatingCreate
-from ...routers.management import get_customer_ratings as _list, create_customer_rating as _create
+from ...common.services.ratings import create_rating, list_ratings
 
-def list_ratings(db: Session, user: dict, limit: int = 50): return _list(limit=limit, db=db, user=user)
-def create_rating(db: Session, user: dict, payload: CustomerRatingCreate): return _create(payload=payload, db=db, user=user)
+def list_barber_ratings(db: Session, user: dict, limit: int = 50): return list_ratings(db, user, limit)
+def create_barber_rating(db: Session, user: dict, payload: CustomerRatingCreate): return create_rating(db, user, payload)

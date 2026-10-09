@@ -1,6 +1,6 @@
-"""Owner-only local demo reset service."""
+"""Owner demo reset service."""
 
 from sqlalchemy.orm import Session
-from ...routers.management import reset_demo as _reset_demo
+from ...common.services.demo import reset
 
-def reset(db: Session, user: dict): return _reset_demo(user=user, db=db)
+def reset_demo(db: Session, user: dict): return reset(db, user)

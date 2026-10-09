@@ -1,6 +1,6 @@
-"""Owner-only message activity read service."""
+"""Owner message activity."""
 
 from sqlalchemy.orm import Session
-from ...routers.management import get_messages as _get_messages
+from ...common.services.messages import list_messages
 
-def list_messages(db: Session, user: dict, limit: int = 10): return _get_messages(limit=limit, db=db, user=user)
+def list_owner_messages(db: Session, user: dict, limit: int = 10): return list_messages(db, user, limit)

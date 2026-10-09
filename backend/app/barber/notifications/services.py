@@ -1,7 +1,6 @@
-"""Feedback notifications scoped to the signed-in barber's visits."""
+"""Barber-only feedback notifications."""
 
 from sqlalchemy.orm import Session
-from ...routers.notifications import get_notifications as _get_notifications
+from ...common.services.notifications import list_notifications
 
-def list_notifications(db: Session, user: dict, limit: int = 50):
-    return _get_notifications(limit=limit, db=db, user=user)
+def list_notifications_for_barber(db: Session, user: dict, limit: int = 50): return list_notifications(db, user, limit)

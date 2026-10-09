@@ -1,6 +1,6 @@
-"""Owner-only branch and employee performance projections."""
+"""Owner insights from shared domain aggregates."""
 
 from sqlalchemy.orm import Session
-from ...services import insight_data
+from ...common.services.insights import get_insights
 
-def get_insights(db: Session, user: dict): return insight_data(db, user)
+def get_owner_insights(db: Session, user: dict): return get_insights(db, user)

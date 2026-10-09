@@ -1,9 +1,8 @@
-"""Owner recovery task operations."""
+"""Owner recovery queue operations."""
 
 from sqlalchemy.orm import Session
 from ...schemas import RecoveryUpdate
-from ...routers.management import get_tasks as _list, update_task as _update
+from ...common.services.recovery import list_tasks, update_task
 
-
-def list_tasks(db: Session, user: dict, status: str | None, limit: int): return _list(status=status, limit=limit, db=db, user=user)
-def update_task(db: Session, user: dict, task_id: int, payload: RecoveryUpdate): return _update(task_id=task_id, payload=payload, db=db, user=user)
+def list_owner_tasks(db: Session, user: dict, status: str | None, limit: int): return list_tasks(db, user, status, limit)
+def update_owner_task(db: Session, user: dict, task_id: int, payload: RecoveryUpdate): return update_task(db, user, task_id, payload)

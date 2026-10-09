@@ -1,6 +1,6 @@
-"""Owner staff-account directory service."""
+"""Owner staff directory."""
 
 from sqlalchemy.orm import Session
-from ...routers.management import get_staff_users as _get_staff_users
+from ...common.services.staff import list_staff
 
-def list_staff(db: Session, user: dict): return _get_staff_users(db=db, user=user)
+def list_owner_staff(db: Session, user: dict): return list_staff(db, user)
