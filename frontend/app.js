@@ -351,9 +351,11 @@ function toggleCustomerType() {
   const isNew = type === "new";
   $("#newCustomerFields").hidden = !isNew;
   $("#returningCustomerFields").hidden = isNew;
-  $("#newCustomerPhone").required = isNew;
-  $("#newCustomerName").required = isNew;
-  $("#customerSearch").required = !isNew;
+  $("#newCustomerPhone").required = isNew && !editingVisitId;
+  $("#newCustomerName").required = isNew && !editingVisitId;
+  // Edit mode already has a confirmed customer and hides the search control.
+  // A hidden required search input blocks the browser's submit event before fetch runs.
+  $("#customerSearch").required = !isNew && !editingVisitId;
   if (isNew) {
     selectedCustomerCandidate = null;
     confirmedCustomer = null;
