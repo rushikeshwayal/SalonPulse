@@ -291,7 +291,7 @@ function renderCustomerVisits() {
         <div class="customer-visit-group-heading">
           <span class="customer-avatar">${esc((customer.customer_name || "?").slice(0, 1).toUpperCase())}</span>
           <span class="customer-visit-group-main"><strong>${esc(customer.customer_name)}</strong><small>${esc(customer.customer_phone || "Phone not added")}${customer.customer_location ? " · " + esc(customer.customer_location) : ""}</small></span>
-          <span class="customer-visit-count">${totalVisits} ${totalVisits === 1 ? "visit" : "visits"}</span>
+          <span class="customer-visit-count">${visits.length === totalVisits ? totalVisits + (totalVisits === 1 ? " visit" : " visits") : visits.length + " of " + totalVisits + " visits"}</span>
         </div>
         <div class="customer-visit-list">${visits.map((visit, index) => {
           const number = Number(visit.visit_number || (visits.length - index));
@@ -603,7 +603,7 @@ function openEditVisit(id) {
   selectedCustomerCandidate = customer;
   $("#customerSearchLabel").hidden = true;
   $("#customerSearchResults").hidden = true;
-  renderConfirmedClientCard(customer);
+  renderConfirmedClientCard(customer, {editable: false});
   $("#branch").value = String(visit.branch_id);
   populateBarbers();
   $("#barber").value = String(visit.barber_id);
