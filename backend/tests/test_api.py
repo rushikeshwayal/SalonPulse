@@ -52,3 +52,63 @@ def test_demo_api_happy_path():
             assert client.get(path).status_code == 200, path
 
         assert client.post("/api/demo/reset").status_code == 200
+
+def test_customer_lookup_and_multi_service_visit():
+    with TestClient(app) as client:
+        client.post("/api/demo/reset")
+        branches = client.get("/api/branches").json()
+        barbers = client.get("/api/barbers").json()
+        branch = branches[0]
+        barber = next(item for item in barbers if item["branch_id"] == branch["id"])
+
+        created = client.post("/api/visits", json={
+            "customer_name": "Aarohi Test",
+            "customer_phone": "+91 98765 12345",
+            "customer_location": "Kharadi, Pune",
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "services": [
+                {"service_name": "Haircut", "quantity": 1, "unit_price": 300},
+                {"service_name": "Beard Trim", "quantity": 2, "unit_price": 150},
+            ],
+            "messaging_consent": False,
+        })
+        assert created.status_code == 201
+        visit = created.json()["visit"]
+        assert visit["amount"] == 600
+        assert len(visit["service_items"]) == 2
+        assert visit["customer_phone"] == "+91 98765 12345"
+        assert visit["customer_location"] == "Kharadi, Pune"
+
+        found_by_phone = client.get(
+            "/api/customers/search", params={"q": "9876512345"}
+        )
+        assert found_by_phone.status_code == 200
+        assert any(c["id"] == visit["customer_id"] for c in found_by_phone.json())
+
+        found_by_name = client.get(
+            "/api/customers/search", params={"q": "Aarohi"}
+        )
+        assert any(c["id"] == visit["customer_id"] for c in found_by_name.json())
+
+        # A new-customer request with an already registered number is rejected to avoid duplicates.
+        duplicate = client.post("/api/visits", json={
+            "customer_name": "Aarohi Duplicate",
+            "customer_phone": "9876512345",
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "services": [{"service_name": "Hair Wash", "quantity": 1, "unit_price": 100}],
+        })
+        assert duplicate.status_code == 409
+
+        # A returning customer can be confirmed by ID and revisited without creating a duplicate.
+        returning = client.post("/api/visits", json={
+            "customer_id": visit["customer_id"],
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "services": [{"service_name": "Hair Wash", "quantity": 1, "unit_price": 100}],
+        })
+        assert returning.status_code == 201
+        assert returning.json()["visit"]["customer_id"] == visit["customer_id"]
+        client.post("/api/demo/reset")
+
