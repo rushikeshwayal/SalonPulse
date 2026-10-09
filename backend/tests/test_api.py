@@ -343,6 +343,10 @@ def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
         assert own_notification["rating"] == 5
         assert all(row["visit_id"] != other_visit_id for row in notification_rows)
         assert client.get("/api/audit-logs").status_code == 403
+        assert client.get("/api/feedback").status_code == 403
+        assert client.post("/api/feedback", json={
+            "visit_id": own_visit_id, "rating": 4, "comment": "Barbers cannot manually enter customer feedback."
+        }).status_code == 403
 
         reviews = client.get(f"/api/customers/{customer_id}/reviews")
         assert reviews.status_code == 200, reviews.text
