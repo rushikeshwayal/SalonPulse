@@ -72,7 +72,11 @@ function setBarberView(view) {
   document.querySelectorAll("[data-barber-tab]").forEach(button => {
     const selected = button.dataset.barberTab === view;
     button.classList.toggle("active", selected);
-    button.setAttribute("aria-current", selected ? "page" : "false");
+    if (selected) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+    if (selected && window.matchMedia("(max-width: 760px)").matches) {
+      button.scrollIntoView({behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", inline: "center", block: "nearest"});
+    }
   });
   const barberMode = authUser?.role === "barber";
   document.querySelectorAll("[data-barber-view]").forEach(section => {
@@ -86,9 +90,23 @@ function applyRoleUi(user) {
   $("#loginScreen").hidden = true;
   $("#passwordChangeScreen").hidden = true;
   $("#appShell").hidden = false;
-  $("#currentUser").textContent = user.display_name || user.username;
-  $("#currentRole").textContent = user.role === "owner" ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
+  const displayName = user.display_name || user.username || user.email || "SalonPulse user";
+  const initials = displayName.trim().split(/\\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "U";
   const owner = user.role === "owner";
+  $("#currentUser").textContent = displayName;
+  $("#currentRole").textContent = owner ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
+  $("#profileInitials").textContent = initials;
+  $("#profileAvatar").textContent = initials;
+  $("#profileDisplayName").textContent = displayName;
+  $("#profileEmailHeadline").textContent = user.email || "Email not provided";
+  $("#profileEmail").textContent = user.email || "Not provided";
+  $("#profileUsername").textContent = user.username || "Not provided";
+  $("#profileWorkspace").textContent = owner ? "Owner · Business-wide access" : "Barber · Personal workspace";
+  const assignedBranch = !owner && data.branches?.length ? data.branches[0] : null;
+  $("#profileBranchRow").hidden = owner;
+  $("#profileBranch").textContent = assignedBranch
+    ? assignedBranch.name.replace("The Gentlemen's Club — ", "") + (assignedBranch.location ? " · " + assignedBranch.location : "")
+    : "Not assigned";
   document.body.classList.toggle("barber-mode", !owner);
   document.querySelectorAll("[data-owner-only]").forEach(el => { el.hidden = !owner; });
   document.querySelectorAll("[data-barber-only]").forEach(el => { el.hidden = owner; });
@@ -210,7 +228,13 @@ function signOut() {
   $("#passwordChangeForm").reset();
   showLogin();
 }
-$("#logout").addEventListener("click", signOut);
+$("#profileButton").addEventListener("click", () => {
+  if (!$("#profileDialog").open) $("#profileDialog").showModal();
+});
+$("#profileSignOut").addEventListener("click", () => {
+  $("#profileDialog").close();
+  signOut();
+});
 $("#cancelPasswordChange").addEventListener("click", signOut);
 async function load() {
   try {
