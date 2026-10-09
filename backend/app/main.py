@@ -181,7 +181,7 @@ SERVICE_CATALOG = [
 
 
 def normalize_phone(value: str | None) -> str:
-    digits = re.sub(r"\\D", "", value or "")
+    digits = re.sub("[^0-9]", "", value or "")
     # Treat Indian 10-digit numbers and +91-prefixed numbers as the same phone.
     if len(digits) == 12 and digits.startswith("91"):
         digits = digits[2:]
