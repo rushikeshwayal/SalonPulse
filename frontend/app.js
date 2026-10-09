@@ -287,12 +287,14 @@ function renderCustomerVisits() {
     <div class="customer-visit-directory">${customers.map(({key, visits}) => {
       const customer = visits[0];
       const totalVisits = Math.max(...visits.map(v => Number(v.visit_count || 0)), visits.length);
-      return `<section class="customer-visit-group" data-customer-visit-group="${esc(key)}">
-        <div class="customer-visit-group-heading">
+      return `<details class="customer-visit-group" data-customer-visit-group="${esc(key)}">
+        <summary class="customer-visit-group-heading" aria-label="Show visits for ${esc(customer.customer_name)}">
           <span class="customer-avatar">${esc((customer.customer_name || "?").slice(0, 1).toUpperCase())}</span>
-          <span class="customer-visit-group-main"><strong>${esc(customer.customer_name)}</strong><small>${esc(customer.customer_phone || "Phone not added")}${customer.customer_location ? " · " + esc(customer.customer_location) : ""}</small></span>
+          <span class="customer-visit-group-main"><strong>${esc(customer.customer_name)}</strong><small>${esc(customer.customer_phone || "Phone not added")}${customer.customer_location ? " · " + esc(customer.customer_location) : ""}</small><small class="customer-visit-expand-hint">Tap to view visit history</small></span>
           <span class="customer-visit-count">${visits.length === totalVisits ? totalVisits + (totalVisits === 1 ? " visit" : " visits") : visits.length + " of " + totalVisits + " visits"}</span>
-        </div>
+          <svg class="customer-group-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+        </summary>
+        <div class="customer-visit-group-content">
         <div class="customer-visit-list">${visits.map((visit, index) => {
           const number = Number(visit.visit_number || (visits.length - index));
           const isLatest = typeof visit.is_latest_visit === "boolean" ? visit.is_latest_visit : index === 0;
@@ -347,7 +349,8 @@ function renderCustomerVisits() {
             </div>
           </details>`;
         }).join("")}</div>
-      </section>`;
+        </div>
+      </details>`;
     }).join("")}</div>`;
 }
 
