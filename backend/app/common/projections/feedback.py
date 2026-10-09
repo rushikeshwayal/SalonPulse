@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from ..models import Barber, Branch, Feedback, RecoveryTask, Visit
+from ..models import Barber, Branch, Customer, Feedback, RecoveryTask, Visit
 from .formatting import utc_iso
 
 def feedback_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
