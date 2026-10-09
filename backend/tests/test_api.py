@@ -48,8 +48,16 @@ def test_demo_api_happy_path():
         assert resolved.json()["status"] == "resolved"
 
         for path in ("/api/dashboard", "/api/visits", "/api/feedback",
-                     "/api/recovery-tasks", "/api/insights", "/api/messages", "/"):
+                     "/api/recovery-tasks", "/api/insights", "/api/messages", "/api/bootstrap", "/"):
             assert client.get(path).status_code == 200, path
+
+        bootstrap = client.get("/api/bootstrap").json()
+        assert set(bootstrap) == {
+            "dashboard", "branches", "barbers", "customers", "visits",
+            "feedback", "tasks", "insights", "messages", "serviceCatalog",
+        }
+        assert bootstrap["dashboard"]["total_visits"] >= 1
+        assert bootstrap["branches"] and bootstrap["serviceCatalog"]
 
         assert client.post("/api/demo/reset").status_code == 200
 
