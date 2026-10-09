@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import re
 from pathlib import Path
@@ -146,6 +146,8 @@ class VisitCreate(BaseModel):
     customer_location: Optional[str] = Field(default="", max_length=160)
     branch_id: int
     barber_id: int
+    # Browser sends an ISO 8601 timestamp with its offset; store in UTC.
+    completed_at: Optional[datetime] = None
     services: list[VisitServiceInput] = Field(default_factory=list, max_length=10)
     # Legacy single-service fields remain accepted for older API clients.
     service_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
@@ -196,7 +198,7 @@ def customer_json(db: Session, customer: Customer) -> dict:
     return {
         "id": customer.id, "name": customer.name, "phone": customer.phone,
         "location": customer.location or "", "messaging_consent": customer.messaging_consent,
-        "visit_count": visits.count(), "last_visit": last.completed_at.isoformat() if last else None,
+        "visit_count": visits.count(), "last_visit": (last.completed_at.isoformat() + "Z") if last and last.completed_at.tzinfo is None else (last.completed_at.isoformat() if last else None),
     }
 
 
@@ -232,7 +234,7 @@ def visit_json(db: Session, v: Visit) -> dict:
         "branch_id": v.branch_id, "branch_name": b.name if b else "Unknown",
         "barber_id": v.barber_id, "barber_name": barber.name if barber else "Unknown",
         "service_name": v.service_name, "service_items": service_items, "amount": v.amount,
-        "completed_at": v.completed_at.isoformat(), "feedback_requested": v.feedback_requested,
+        "completed_at": (v.completed_at.isoformat() + "Z") if v.completed_at.tzinfo is None else v.completed_at.isoformat(), "feedback_requested": v.feedback_requested,
         "feedback_received": bool(f), "rating": f.rating if f else None,
     }
 
@@ -480,9 +482,16 @@ def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
     if payload.messaging_consent:
         customer.messaging_consent = True
 
+    # Interpret a missing timestamp as now; normalize supplied local-offset
+    # timestamps to naive UTC for PostgreSQL's timestamp-without-time-zone column.
+    visited_at = payload.completed_at or datetime.now(timezone.utc)
+    if visited_at.tzinfo is None:
+        visited_at = visited_at.replace(tzinfo=timezone.utc)
+    visited_at = visited_at.astimezone(timezone.utc).replace(tzinfo=None)
+
     v = Visit(
         customer_id=customer.id, branch_id=branch.id, barber_id=barber.id,
-        service_name=service_summary, amount=total_amount,
+        service_name=service_summary, amount=total_amount, completed_at=visited_at,
         feedback_requested=payload.messaging_consent,
     )
     db.add(v)
