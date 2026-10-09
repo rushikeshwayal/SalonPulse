@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -14,7 +15,33 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT.parent / "frontend"
 DB = ROOT / "salonpulse.db"
-engine = create_engine(f"sqlite:///{DB}", connect_args={"check_same_thread": False})
+
+def resolve_database_url() -> str:
+    """Use Supabase/PostgreSQL when DATABASE_URL is configured; SQLite only for local dev."""
+    configured = os.getenv("DATABASE_URL")
+    if configured:
+        if configured.startswith("postgres://"):
+            configured = configured.replace("postgres://", "postgresql+psycopg://", 1)
+        elif configured.startswith("postgresql://"):
+            configured = configured.replace("postgresql://", "postgresql+psycopg://", 1)
+        if configured.startswith("postgresql+psycopg://") and "sslmode=" not in configured:
+            configured += ("&" if "?" in configured else "?") + "sslmode=require"
+        return configured
+    if os.getenv("VERCEL") == "1":
+        raise RuntimeError(
+            "DATABASE_URL is required on Vercel. Set it to the Supabase PostgreSQL connection string."
+        )
+    return f"sqlite:///{DB}"
+
+
+DATABASE_URL = resolve_database_url()
+engine_options = {"pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite:"):
+    engine_options["connect_args"] = {"check_same_thread": False}
+else:
+    # Avoid prepared-statement reuse when the Supabase transaction pooler is used.
+    engine_options["connect_args"] = {"prepare_threshold": None}
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
