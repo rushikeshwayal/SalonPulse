@@ -214,7 +214,7 @@ function render() {
   ].map(x => `<article class="stat"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></article>`).join("");
 
   $("#feedback").innerHTML = data.feedback.length ? data.feedback.map(f => `
-    <div class="item"><div class="rating">${f.rating}/5</div><div class="item-content">
+    <div class="item feedback-card" data-feedback-visit="${f.visit_id}" role="button" tabindex="0"><div class="rating">${f.rating}/5</div><div class="item-content">
       <strong>${esc(f.customer_name)} · ${esc(f.branch_name.replace("The Gentlemen's Club — ",""))}</strong>
       <p>${esc(f.comment || "No written comment.")}</p>
       <div class="meta">${esc(f.barber_name)} · ${date(f.created_at)} · ${f.recovery_task_id ? "Recovery task #" + f.recovery_task_id : "No task needed"}</div>
