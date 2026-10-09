@@ -63,3 +63,24 @@
  .total-line strong{font-size:20px}
  .dialog-heading h2{font-size:18px}
 }
+
+
+/* Polished client check-in and visit timeline */
+.hero .primary{
+  padding:14px 19px;
+  border-radius:11px;
+  font-size:12px;
+  letter-spacing:.1px;
+  background:linear-gradient(135deg,#7162e8,#5948d1);
+  box-shadow:0 8px 20px #7162e833;
+  transition:transform .15s ease,box-shadow .15s ease;
+}
+.hero .primary:hover{transform:translateY(-1px);box-shadow:0 11px 24px #7162e844}
+.dialog-heading .eyebrow{letter-spacing:1.3px;color:var(--purple);font-weight:800}
+.dialog-heading h2{letter-spacing:-.7px}
+.visit-time-note{margin:-5px 0 0;font-size:10px}
+.client-profile-details{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.client-profile-details span{background:#fff;border:1px solid #eceaf8;border-radius:7px;padding:9px;font-size:10px;overflow-wrap:anywhere}
+.client-profile-details b{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+#visitDateTime{font-variant-numeric:tabular-nums;max-width:100%}
+@media(max-width:620px){.client-profile-details{grid-template-columns:1fr}.hero .primary{width:100%;text-align:center}}
