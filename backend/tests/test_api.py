@@ -337,7 +337,8 @@ def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
         notification_payload = notifications.json()
         assert notification_payload["count"] == 1
         assert notification_payload["notifications"][0]["visit_id"] == own_visit_id
-        assert notification_payload["notifications"][0]["comment"] if "comment" in notification_payload["notifications"][0] else True
+        assert notification_payload["notifications"][0]["message"] == "Very satisfied with the haircut."
+        assert notification_payload["notifications"][0]["rating"] == 5
         assert client.get("/api/audit-logs").status_code == 403
 
         reviews = client.get(f"/api/customers/{customer_id}/reviews")
