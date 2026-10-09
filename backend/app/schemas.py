@@ -1,67 +1,11 @@
-"""Pydantic request contracts and input validation schemas."""
+"""Compatibility exports for request schemas grouped by domain under app.common.schemas."""
 
-from __future__ import annotations
+from .common.schemas import (
+    ChangePasswordRequest, CustomerRatingCreate, FeedbackCreate, LoginRequest,
+    RecoveryUpdate, VisitCreate, VisitServiceInput, VisitUpdate,
+)
 
-from datetime import datetime
-from typing import Optional
-
-from pydantic import BaseModel, Field
-
-
-class VisitServiceInput(BaseModel):
-    service_name: str = Field(min_length=2, max_length=120)
-    quantity: int = Field(ge=1, le=50)
-    unit_price: float = Field(ge=0, le=100000)
-
-
-class VisitCreate(BaseModel):
-    customer_id: Optional[int] = None
-    customer_name: Optional[str] = Field(default=None, max_length=120)
-    customer_phone: Optional[str] = Field(default=None, max_length=40)
-    customer_location: Optional[str] = Field(default="", max_length=160)
-    branch_id: int
-    barber_id: int
-    # Browser sends an ISO 8601 timestamp with its offset; store in UTC.
-    completed_at: Optional[datetime] = None
-    services: list[VisitServiceInput] = Field(default_factory=list, max_length=10)
-    # Legacy single-service fields remain accepted for older API clients.
-    service_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
-    amount: Optional[float] = Field(default=None, ge=0, le=100000)
-    messaging_consent: bool = False
-
-
-class FeedbackCreate(BaseModel):
-    visit_id: int
-    rating: int = Field(ge=1, le=5)
-    comment: str = Field(default="", max_length=2000)
-
-
-class RecoveryUpdate(BaseModel):
-    status: str = Field(pattern="^(open|in_progress|resolved)$")
-    resolution_note: str = Field(default="", max_length=2000)
-
-
-class LoginRequest(BaseModel):
-    identifier: str = Field(min_length=1, max_length=255)
-    password: str = Field(min_length=1, max_length=256)
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=256)
-    new_password: str = Field(min_length=12, max_length=256)
-
-
-class VisitUpdate(BaseModel):
-    branch_id: Optional[int] = None
-    barber_id: Optional[int] = None
-    customer_id: Optional[int] = None
-    completed_at: Optional[datetime] = None
-    services: Optional[list[VisitServiceInput]] = Field(default=None, max_length=10)
-    messaging_consent: Optional[bool] = None
-    change_note: str = Field(default="", max_length=500)
-
-
-class CustomerRatingCreate(BaseModel):
-    visit_id: int
-    rating: int = Field(ge=1, le=5)
-    note: str = Field(default="", max_length=1000)
+__all__ = [
+    "ChangePasswordRequest", "CustomerRatingCreate", "FeedbackCreate", "LoginRequest",
+    "RecoveryUpdate", "VisitCreate", "VisitServiceInput", "VisitUpdate",
+]

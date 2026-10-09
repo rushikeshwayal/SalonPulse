@@ -16,37 +16,83 @@ SalonPulse is a salon operations demo built with **FastAPI**, **SQLAlchemy**, **
 
 ## Backend layout
 
-The backend uses a small **composition root** in `backend/app/main.py`; it assembles the FastAPI app and registers routers. Domain code is split by responsibility:
+The backend is organized into **shared infrastructure**, **common domain services**, and two explicit API panels. Each panel feature has a thin `route.py`, feature-specific `schema.py` where it needs request/response contracts, and a `services.py` layer. Shared entities are defined once because both panels work with the same visit/customer tables.
 
 ```text
-backend/
-  app/
-    main.py             # Create the FastAPI app, mount static files, include routers
-    config.py           # Environment settings and repository/frontend paths
-    constants.py        # Service catalogue and application constants
-    database.py         # SQLAlchemy engine, Base, SessionLocal and get_db
-    models.py           # ORM models and database table mappings
-    schemas.py          # Pydantic request/validation schemas
-    security.py         # Password hashes and signed bearer tokens
-    middleware.py       # Authentication middleware
-    dependencies.py     # Current-user and owner-only dependencies
-    services.py         # Query helpers, domain operations and response serializers
-    seed.py             # Local/demo data seed logic
-    routers/
-      auth.py           # Login, current account and password update
-      system.py         # Root page and health check
-      catalog.py        # Branches, barbers and service catalogue
-      customers.py      # Customer search and visit-linked review history
-      visits.py         # Dashboard and visit creation/update/history
-      notifications.py  # Feedback notifications
-      management.py     # Reporting, recovery, staff and owner audit endpoints
-  tests/
-    test_api.py
-  .env.example          # Local environment template
-  requirements.txt
+backend/app/
+  main.py                    # App composition; register common and panel routers
+  config.py                  # Environment configuration and paths
+  database.py                # SQLAlchemy engine, Base, sessions, get_db
+  dependencies.py             # Signed-in user, owner and barber access checks
+  middleware.py              # Authentication middleware
+  security.py                # Password hashing and bearer tokens
+  seed.py                    # Local fictional demo seed data
+  common/
+    auth/route.py             # Shared login, /me and password change
+    system/route.py           # Health and frontend route
+    bootstrap.py              # Role-safe initial workspace payload
+    models/                   # Shared ORM entities, grouped by domain
+      organization.py
+      staff.py
+      customer.py
+      visit.py
+      visit_service.py
+      feedback.py
+      recovery.py
+      messaging.py
+      audit.py
+      rating.py
+    schemas/                  # Shared Pydantic request contracts by domain
+      auth.py
+      visits.py
+      feedback.py
+      ratings.py
+    services/                 # Domain use-cases shared across panels
+      visits.py
+      customers.py
+      feedback.py
+      recovery.py
+      ratings.py
+      audit.py
+      notifications.py
+      messages.py
+      insights.py
+      staff.py
+      demo.py
+  owner/
+    home/                     # Dashboard and bootstrap payload
+    finance/                  # Revenue/ticket and store/employee totals
+    catalog/                  # Branches, barbers, services
+    customers/                 # Business-wide customer history
+    visits/                    # Visit CRUD and version history
+    feedback/                  # Feedback inbox
+    recovery/                  # Customer recovery tasks
+    insights/                  # Store/employee performance
+    messages/                  # Mock message activity
+    audit/                     # Internal audit history
+    staff/                     # Staff accounts
+    ratings/                   # Business-wide interaction ratings
+    demo/                      # Local-only demo reset
+  barber/
+    home/                      # Personal dashboard and bootstrap
+    catalog/                   # Assigned branch and services
+    customers/                 # Only customers personally served
+    visits/                    # Assigned visit workflows
+    notifications/             # Feedback on own visits
+    ratings/                  # Interaction rating entry and history
+  routers/                     # Backward-compatible /api/* routes, hidden in OpenAPI
+  tests/test_api.py
 ```
 
-Keep request/response contracts in `schemas.py`, database entities in `models.py`, and SQLAlchemy session/configuration in `database.py`. Route modules must depend on those modules and shared services, **not import from `main.py`**. The `main.py` module continues to expose commonly used objects such as `app`, `SessionLocal`, and ORM models for the existing test and Vercel entry points.
+### API organization
+
+- **Common:** `/api/auth/*` and `/api/health`
+- **Owner:** `/api/owner/home`, `/api/owner/finance`, `/api/owner/visits`, `/api/owner/customers`, `/api/owner/feedback`, `/api/owner/recovery-tasks`, `/api/owner/insights`, `/api/owner/audit-logs`, and related management routes.
+- **Barber:** `/api/barber/home`, `/api/barber/visits`, `/api/barber/customers`, `/api/barber/notifications`, and `/api/barber/customer-ratings`.
+
+Swagger/OpenAPI at `/docs` groups routes using panel-and-feature tags such as **Owner / Finance** and **Barber / Visits**. Role dependencies are checked on the server. Existing `/api/*` URLs are retained as hidden compatibility routes while the browser client uses the panel-specific endpoints. This allows older clients/tests to keep working without duplicating ambiguous entries in the API documentation.
+
+Keep database entities shared rather than duplicating a `Visit` or `Customer` model under both panels. Home and finance are projections, not separate database tables, so their response schemas and service functions live in the feature packages without artificial ORM models.
 
 ## Run locally
 
