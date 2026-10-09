@@ -15,6 +15,8 @@ const normalizePhone = value => {
 };
 
 let data = {};
+let authUser = null;
+let editingVisitId = null;
 let selectedCustomerCandidate = null;
 let confirmedCustomer = null;
 let customerSearchTimer = null;
@@ -22,10 +24,22 @@ let customerSearchSequence = 0;
 let lastCustomerSearchMatches = [];
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, {headers: {"Content-Type":"application/json"}, ...opts});
-  const d = await r.json();
-  if (!r.ok) throw Error(d.detail || "Request failed");
-  return d;
+  const headers = new Headers(opts.headers || {});
+  if (opts.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const token = sessionStorage.getItem("salonpulse_token");
+  if (token && path !== "/api/auth/login") headers.set("Authorization", "Bearer " + token);
+  const response = await fetch(path, {...opts, headers});
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(result.detail || "Request failed (" + response.status + ")");
+    error.status = response.status;
+    if (response.status === 401 && path !== "/api/auth/login") {
+      sessionStorage.removeItem("salonpulse_token");
+      showLogin();
+    }
+    throw error;
+  }
+  return result;
 }
 function toast(s) {
   const t = $("#toast");
@@ -35,26 +49,19 @@ function toast(s) {
 }
 async function load() {
   try {
-    // One serverless request avoids fanning out to ten cold starts on initial page load.
     const payload = await api("/api/bootstrap");
-    data = {
-      dashboard: payload.dashboard,
-      branches: payload.branches,
-      barbers: payload.barbers,
-      customers: payload.customers,
-      visits: payload.visits,
-      feedback: payload.feedback,
-      tasks: payload.tasks,
-      insights: payload.insights,
-      messages: payload.messages,
-      serviceCatalog: payload.serviceCatalog
-    };
+    data = payload;
+    authUser = payload.user;
+    applyRoleUi(authUser);
     render();
     populate();
     document.body.classList.add("data-loaded");
   } catch (e) {
-    toast("API error: " + e.message);
-    document.body.classList.add("data-load-failed");
+    if (e.status === 403 && String(e.message).startsWith("PASSWORD_CHANGE_REQUIRED")) {
+      showPasswordChange();
+      return;
+    }
+    if (e.status !== 401) toast("Couldn't load workspace: " + e.message);
   }
 }
 function render() {
