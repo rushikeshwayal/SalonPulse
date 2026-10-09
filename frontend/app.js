@@ -262,7 +262,12 @@ function populateBarbers() {
     .map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
 }
 function openVisitDialog() {
+  editingVisitId = null;
   $("#visitForm").reset();
+  $("#customerTypeOptions").hidden = false;
+  $("#visitDialog").querySelector(".eyebrow").textContent = "CLIENT CHECK-IN";
+  $("#visitDialog").querySelector("h2").textContent = "Start a better visit";
+  $("#saveVisit").textContent = "Complete check-in";
   $("input[name='customer_type'][value='new']").checked = true;
   selectedCustomerCandidate = null;
   confirmedCustomer = null;
@@ -394,6 +399,73 @@ async function checkNewCustomerPhone() {
   } catch (e) {
     toast("Couldn't check that number: " + e.message);
   }
+}
+function renderConfirmedClientCard(candidate, {editable = true, showPrevious = true} = {}) {
+  const card = $("#selectedCustomerConfirm");
+  card.innerHTML = `<div class="confirmed-banner">✓ ${editable ? "CLIENT SELECTED" : "CLIENT CONFIRMED"}</div>
+    <strong>${esc(candidate.name)}</strong>
+    <div class="client-profile-details"><span><b>Phone</b> ${esc(candidate.phone || "No phone saved")}</span><span><b>Area</b> ${esc(candidate.location || "Not added")}</span></div>
+    ${showPrevious ? `<div class="meta">${candidate.visit_count || 0} previous visit${candidate.visit_count===1?"":"s"}${candidate.last_visit ? " · Last visit " + dateTime(candidate.last_visit) : ""}</div>` : ""}
+    ${editable ? '<button type="button" class="text-action" data-change-customer>Change / search another client</button>' : ""}`;
+  card.hidden = false;
+}
+function openEditVisit(id) {
+  const visit = data.visits.find(item => item.id === id);
+  if (!visit) return toast("Visit not found in this workspace. Refresh and try again.");
+  openVisitDialog();
+  editingVisitId = visit.id;
+  $("#visitDialog").querySelector(".eyebrow").textContent = "VERSIONED EDIT";
+  $("#visitDialog").querySelector("h2").textContent = "Update visit record";
+  $("#saveVisit").textContent = "Save changes";
+  $("#customerTypeOptions").hidden = true;
+  $("input[name='customer_type'][value='returning']").checked = true;
+  toggleCustomerType();
+  const customer = data.customers.find(item => item.id === visit.customer_id) || {
+    id: visit.customer_id, name: visit.customer_name, phone: visit.customer_phone,
+    location: visit.customer_location, visit_count: 0, last_visit: visit.completed_at
+  };
+  confirmedCustomer = customer;
+  selectedCustomerCandidate = customer;
+  $("#customerSearchLabel").hidden = true;
+  $("#customerSearchResults").hidden = true;
+  renderConfirmedClientCard(customer);
+  $("#branch").value = String(visit.branch_id);
+  populateBarbers();
+  $("#barber").value = String(visit.barber_id);
+  $("#visitDateTime").value = localDateTimeValue(new Date(visit.completed_at));
+  $("input[name='messaging_consent']").checked = Boolean(visit.feedback_requested);
+  $("#serviceRows").innerHTML = "";
+  const lines = visit.service_items?.length ? visit.service_items : [{
+    service_name: visit.service_name, quantity: 1, unit_price: visit.amount
+  }];
+  lines.forEach(line => addServiceRow(line));
+  calcTotal();
+}
+async function openVisitHistory(id) {
+  $("#historyContent").innerHTML = '<p class="empty">Loading history…</p>';
+  $("#historyDialog").showModal();
+  try {
+    const entries = await api("/api/visits/" + id + "/history");
+    $("#historyContent").innerHTML = entries.length ? entries.map(entry => `
+      <article class="version-card">
+        <div class="version-heading"><strong>Version ${entry.id} · ${esc(entry.action.replaceAll(".", " · ").replaceAll("_", " "))}</strong><span class="meta">${dateTime(entry.created_at)}</span></div>
+        <p class="meta">Changed by ${esc(entry.actor_username)} · ${esc(entry.actor_role)} ${entry.change_note ? " · " + esc(entry.change_note) : ""}</p>
+        ${entry.before_data ? `<details><summary>Before this change</summary><pre>${esc(JSON.stringify(entry.before_data, null, 2))}</pre></details>` : '<p class="meta">No previous version — this is the original entry.</p>'}
+        ${entry.after_data ? `<details><summary>Saved version</summary><pre>${esc(JSON.stringify(entry.after_data, null, 2))}</pre></details>` : ""}
+      </article>`).join("") : '<div class="empty">No edits have been made. The original version is the current record.</div>';
+  } catch (err) {
+    $("#historyContent").innerHTML = `<p class="form-error">${esc(err.message)}</p>`;
+  }
+}
+function openCustomerRating(id) {
+  const visit = data.visits.find(item => item.id === id);
+  if (!visit) return toast("Visit not found. Refresh and try again.");
+  $("#customerRatingForm").reset();
+  $("#customerRatingVisitId").value = String(visit.id);
+  $("#customerRatingClient").innerHTML = `<strong>${esc(visit.customer_name)}</strong><span class="meta">Visit #${visit.id} · ${esc(visit.branch_name)}</span>`;
+  $("#customerRatingForm").elements.rating.value = String(visit.customer_rating || 5);
+  $("#customerRatingForm").elements.note.value = visit.customer_rating_note || "";
+  $("#customerRatingDialog").showModal();
 }
 function reviewCustomer(id) {
   const candidate = lastCustomerSearchMatches.find(c => c.id === id) ||
