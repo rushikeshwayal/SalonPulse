@@ -194,7 +194,7 @@ function renderCustomerResults(matches, term) {
   }
   box.innerHTML = matches.map(c => `
     <article class="customer-result"><div><strong>${esc(c.name)}</strong><div class="meta">${esc(c.phone || "No phone saved")} · ${esc(c.location || "Location not added")}</div>
-      <div class="meta">${c.visit_count} previous visit${c.visit_count===1?"":"s"}${c.last_visit ? " · Last visit " + date(c.last_visit) : ""}</div></div>
+      <div class="meta">${c.visit_count} previous visit${c.visit_count===1?"":"s"}${c.last_visit ? " · Last visit " + dateTime(c.last_visit) : ""}</div></div>
       <button type="button" class="secondary" data-review-customer="${c.id}">Review</button></article>`).join("");
 }
 async function searchReturningCustomer() {
@@ -387,12 +387,12 @@ $("#visitForm").onsubmit = async e => {
     const r = await api("/api/visits", {method:"POST", body:JSON.stringify(payload)});
     $("#visitDialog").close();
     await load();
-    toast(`Visit #${r.visit.id} saved · Total ${money(r.visit.amount)}. ${r.notice}`);
+    toast(`Check-in saved · Total ${money(r.visit.amount)}. ${r.notice}`);
   } catch (err) {
     toast(err.message);
   } finally {
     save.disabled = false;
-    save.textContent = "Save visit";
+    save.textContent = "Complete check-in";
   }
 };
 $("#feedbackForm").onsubmit = async e => {
