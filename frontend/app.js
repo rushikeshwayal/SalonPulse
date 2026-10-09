@@ -75,9 +75,6 @@ function setBarberView(view) {
   document.querySelectorAll("[data-barber-view]").forEach(section => {
     section.hidden = barberMode && section.dataset.barberView !== view;
   });
-  document.querySelectorAll("[data-barber-only]").forEach(section => {
-    section.hidden = !barberMode;
-  });
 }
 function applyRoleUi(user) {
   authUser = user;
@@ -89,6 +86,7 @@ function applyRoleUi(user) {
   const owner = user.role === "owner";
   document.body.classList.toggle("barber-mode", !owner);
   document.querySelectorAll("[data-owner-only]").forEach(el => { el.hidden = !owner; });
+  document.querySelectorAll("[data-barber-only]").forEach(el => { el.hidden = owner; });
   $("#workspaceEyebrow").textContent = owner ? "OWNER OVERVIEW" : "BARBER WORKSPACE";
   $("#workspaceTitle").innerHTML = owner ? "Your business,<br>at a glance." : "Every visit.<br>Every detail.";
   $("#workspaceSubtitle").textContent = owner
