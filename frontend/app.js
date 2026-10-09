@@ -19,8 +19,7 @@ let authUser = null;
 let editingVisitId = null;
 let activeBarberView = "overview";
 let expandedVisitsLoaded = false;
-let expandedFeedbackLoaded = false;
-let expandedAuditLoaded = false;
+let expandedNotificationsLoaded = false;
 let selectedCustomerCandidate = null;
 let confirmedCustomer = null;
 let customerSearchTimer = null;
@@ -132,14 +131,12 @@ document.querySelectorAll("[data-barber-tab]").forEach(button => {
         expandedVisitsLoaded = true;
         render();
         populate();
-      } else if (view === "feedback" && !expandedFeedbackLoaded) {
-        data.feedback = await api("/api/feedback?limit=100");
-        expandedFeedbackLoaded = true;
-        render();
-      } else if (view === "activity" && !expandedAuditLoaded) {
-        data.auditLogs = await api("/api/audit-logs?limit=100");
-        expandedAuditLoaded = true;
-        render();
+      } else if (view === "notifications") {
+        const result = await api("/api/notifications?limit=100");
+        data.notifications = result.notifications || [];
+        data.notificationCount = Number(result.count ?? data.notifications.length);
+        expandedNotificationsLoaded = true;
+        renderNotifications();
       }
     } catch (err) {
       toast("Couldn't load this section: " + err.message);
@@ -354,6 +351,55 @@ function renderCustomerVisits() {
     }).join("")}</div>`;
 }
 
+function renderNotifications() {
+  const notifications = data.notifications || [];
+  const count = Number(data.notificationCount ?? notifications.length);
+  const badge = $("#notificationBadge");
+  badge.textContent = count > 99 ? "99+" : String(count);
+  badge.hidden = count <= 0;
+  $("#notificationCount").textContent = count + (count === 1 ? " update" : " updates");
+  $("#notificationsList").innerHTML = notifications.length ? notifications.map(notification => `
+    <button type="button" class="notification-card" data-notification-visit="${notification.visit_id}">
+      <span class="notification-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-5.2A7.5 7.5 0 1 1 20 11.5Z"/></svg></span>
+      <span class="notification-card-main">
+        <span class="notification-card-top"><strong>${esc(notification.title || "Customer feedback received")}</strong><time>${dateTime(notification.created_at)}</time></span>
+        <span class="notification-card-customer">${esc(notification.customer_name)} · ${"★".repeat(notification.rating || 0)}${"☆".repeat(Math.max(0, 5 - Number(notification.rating || 0)))} <b>${notification.rating}/5</b></span>
+        ${notification.message ? `<span class="notification-card-message">${esc(notification.message)}</span>` : '<span class="notification-card-message muted">A customer submitted a star rating without a written comment.</span>'}
+        <span class="notification-card-meta">Visit ${notification.visit_number} · ${esc(notification.service_name || "Service")} · ${money(notification.amount)} · Tap to open visit</span>
+      </span>
+      <span class="notification-card-chevron">›</span>
+    </button>`).join("") : `
+      <div class="notification-empty">
+        <span class="notification-empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></span>
+        <strong>You're all caught up</strong>
+        <p>When a customer leaves feedback on a visit you served, it will appear here.</p>
+      </div>`;
+}
+async function openNotificationVisit(visitId) {
+  setBarberView("visits");
+  try {
+    if (!expandedVisitsLoaded) {
+      data.visits = await api("/api/visits?limit=100");
+      expandedVisitsLoaded = true;
+      render();
+      populate();
+    }
+    const visitAccordion = document.querySelector(`details[data-visit-accordion="${Number(visitId)}"]`);
+    const customerGroup = visitAccordion?.closest("details[data-customer-visit-group]");
+    if (!visitAccordion || !customerGroup) {
+      toast("That visit isn't in the most recent 100 loaded visits. Open Customer visits to find it.");
+      return;
+    }
+    customerGroup.open = true;
+    visitAccordion.open = true;
+    visitAccordion.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "center"
+    });
+  } catch (err) {
+    toast("Couldn't open the visit: " + err.message);
+  }
+}
 function render() {
   const d = data.dashboard;
   const isBarber = authUser?.role === "barber";
@@ -420,6 +466,8 @@ function render() {
     <div class="item"><div class="item-content"><strong>${esc(m.customer_name)} <span class="meta">${esc(m.status.replaceAll("_"," "))}</span></strong>
       <p>${esc(m.message)}</p><div class="meta">${date(m.created_at)} · mock-only, not delivered</div>
     </div></div>`).join("") || '<div class="empty">No messages queued.</div>';
+
+  if (!expandedNotificationsLoaded) renderNotifications();
 }
 function populate() {
   $("#branch").innerHTML = data.branches.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
@@ -921,6 +969,11 @@ $("#feedback").addEventListener("click", e => {
   const card = e.target.closest("[data-feedback-visit]");
   if (card) openVisitDetails(Number(card.dataset.feedbackVisit));
 });
+$("#notificationsList").addEventListener("click", e => {
+  const notification = e.target.closest("[data-notification-visit]");
+  if (notification) openNotificationVisit(Number(notification.dataset.notificationVisit));
+});
+
 $("#refreshAudit").addEventListener("click", async () => {
   try {
     data.auditLogs = await api("/api/audit-logs?limit=50");
