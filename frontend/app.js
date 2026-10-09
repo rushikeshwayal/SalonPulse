@@ -95,7 +95,6 @@ function applyRoleUi(user) {
   const owner = user.role === "owner";
   $("#currentUser").textContent = displayName;
   $("#currentRole").textContent = owner ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
-  $("#profileInitials").textContent = initials;
   $("#profileAvatar").textContent = initials;
   $("#profileDisplayName").textContent = displayName;
   $("#profileEmailHeadline").textContent = user.email || "Email not provided";
