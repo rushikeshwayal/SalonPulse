@@ -14,7 +14,7 @@
 <main>
   <section class="hero">
     <div><p class="eyebrow">MULTI-BRANCH SALON DEMO</p><h1>Hear what customers<br>don't always say.</h1><p class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
-    <button id="newVisit" class="primary">＋ Record visit</button>
+    <button id="newVisit" class="primary">✦ Start a check-in</button>
   </section>
   <section class="stats" id="stats"></section>
   <section class="grid">
@@ -30,7 +30,7 @@
 </main>
 <dialog id="visitDialog" class="visit-dialog">
   <form id="visitForm">
-    <div class="dialog-heading"><div><p class="eyebrow">CHECKOUT</p><h2>Record customer visit</h2><p class="muted">Identify the customer, add services, and confirm the total.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
+    <div class="dialog-heading"><div><p class="eyebrow">CLIENT CHECK-IN</p><h2>Start a better visit</h2><p class="muted">Recognize your client, capture the service, keep the relationship going.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
     <section class="form-section">
       <div class="section-heading"><span class="step">1</span><div><h3>Customer</h3><p>Look up a returning customer or register a new one.</p></div></div>
       <div class="customer-type">
@@ -46,7 +46,7 @@
         <div id="newCustomerMatchNotice" class="notice" hidden></div>
       </div>
       <div id="returningCustomerFields" hidden>
-        <label>Search by phone number or name<input id="customerSearch" type="search" autocomplete="off" placeholder="Enter phone number or customer name"></label>
+        <label id="customerSearchLabel">Find your client<input id="customerSearch" type="search" autocomplete="off" placeholder="Search by phone number or name"></label>
         <div id="customerSearchResults" class="search-results"><p class="empty">Enter at least 3 characters to search existing customers.</p></div>
         <div id="selectedCustomerConfirm" class="selected-customer" hidden></div>
       </div>
@@ -54,6 +54,8 @@
     <section class="form-section">
       <div class="section-heading"><span class="step">2</span><div><h3>Visit details</h3><p>Choose the branch and the barber who served the customer.</p></div></div>
       <div class="two"><label>Branch<select name="branch_id" id="branch" required></select></label><label>Barber<select name="barber_id" id="barber" required></select></label></div>
+      <label>Visit date &amp; time<input id="visitDateTime" name="completed_at" type="datetime-local" required></label>
+      <p class="muted visit-time-note">Saved with the visit so you can see when the client last visited and plan future follow-ups.</p>
     </section>
     <section class="form-section">
       <div class="section-heading"><span class="step">3</span><div><h3>Services</h3><p>Add every service provided. You can adjust quantity and price.</p></div></div>
@@ -66,7 +68,7 @@
       <label class="check"><input name="messaging_consent" type="checkbox"> Customer has agreed to receive feedback messages</label>
       <p class="muted">Demo mode only: this records consent and a mock message event; it does not send WhatsApp messages.</p>
     </section>
-    <div class="actions"><button type="button" class="secondary close">Cancel</button><button id="saveVisit" class="primary">Save visit</button></div>
+    <div class="actions"><button type="button" class="secondary close">Cancel</button><button id="saveVisit" class="primary">Complete check-in</button></div>
   </form>
 </dialog>
 <dialog id="feedbackDialog"><form id="feedbackForm"><h2>Record private feedback</h2><label>Visit<select name="visit_id" id="feedbackVisit" required></select></label><label>Rating<select name="rating"><option value="1">1 — Very poor</option><option value="2">2 — Poor</option><option value="3" selected>3 — Okay</option><option value="4">4 — Good</option><option value="5">5 — Excellent</option></select></label><label>Comment<textarea name="comment" rows="3" placeholder="What could the salon improve?"></textarea></label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Save feedback</button></div></form></dialog>
