@@ -267,3 +267,75 @@ def test_customer_visit_numbering_and_latest_only_editing():
             "change_note": "Do not allow customer reassignment",
         })
         assert reassignment.status_code in {400, 404}
+
+
+def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
+    with TestClient(app) as client:
+        login_as(client, "owner")
+        reset = client.post("/api/demo/reset")
+        assert reset.status_code == 200, reset.text
+        branches = client.get("/api/branches").json()
+        barbers = client.get("/api/barbers").json()
+        first_barber = next(b for b in barbers if b["id"] == 1)
+        other_barber = next(b for b in barbers if b["id"] != first_barber["id"])
+
+        own_visit = client.post("/api/visits", json={
+            "customer_name": "Shared Timeline Customer",
+            "customer_phone": "9876500041",
+            "customer_location": "Pune",
+            "branch_id": first_barber["branch_id"],
+            "barber_id": first_barber["id"],
+            "services": [{"service_name": "Haircut", "quantity": 1, "unit_price": 300}],
+        })
+        assert own_visit.status_code == 201, own_visit.text
+        customer_id = own_visit.json()["visit"]["customer_id"]
+        own_visit_id = own_visit.json()["visit"]["id"]
+
+        other_visit = client.post("/api/visits", json={
+            "customer_id": customer_id,
+            "branch_id": other_barber["branch_id"],
+            "barber_id": other_barber["id"],
+            "services": [{"service_name": "Beard Trim", "quantity": 1, "unit_price": 150}],
+        })
+        assert other_visit.status_code == 201, other_visit.text
+        other_visit_id = other_visit.json()["visit"]["id"]
+
+        own_feedback = client.post("/api/feedback", json={
+            "visit_id": own_visit_id,
+            "rating": 5,
+            "comment": "Very satisfied with the haircut.",
+        })
+        assert own_feedback.status_code == 201, own_feedback.text
+        other_feedback = client.post("/api/feedback", json={
+            "visit_id": other_visit_id,
+            "rating": 2,
+            "comment": "This feedback belongs to another barber's visit.",
+        })
+        assert other_feedback.status_code == 201, other_feedback.text
+
+        hidden_customer_visit = client.post("/api/visits", json={
+            "customer_name": "Only Other Barber Customer",
+            "customer_phone": "9876500042",
+            "customer_location": "Pune",
+            "branch_id": other_barber["branch_id"],
+            "barber_id": other_barber["id"],
+            "services": [{"service_name": "Hair Wash", "quantity": 1, "unit_price": 100}],
+        })
+        assert hidden_customer_visit.status_code == 201, hidden_customer_visit.text
+        hidden_customer_id = hidden_customer_visit.json()["visit"]["customer_id"]
+
+        login_as(client, "aarav")
+        customer_ids = {customer["id"] for customer in client.get("/api/customers").json()}
+        assert customer_id in customer_ids
+        assert hidden_customer_id not in customer_ids
+
+        reviews = client.get(f"/api/customers/{customer_id}/reviews")
+        assert reviews.status_code == 200, reviews.text
+        review_data = reviews.json()
+        assert review_data["visit_count"] == 1
+        assert review_data["review_count"] == 1
+        assert [review["visit_id"] for review in review_data["reviews"]] == [own_visit_id]
+        assert review_data["reviews"][0]["comment"] == "Very satisfied with the haircut."
+
+        hidden_history = client.get(f"/api/customers/{hidden_customer_id}/reviews")
+        assert hidden_history.status_code == 404
