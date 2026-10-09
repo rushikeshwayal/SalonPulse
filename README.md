@@ -62,6 +62,17 @@ SQLite database is created locally under `backend/` on first run. Demo rows are 
 - `GET /api/messages`
 - `POST /api/demo/reset`
 
+## Supabase PostgreSQL and Vercel
+
+The repository is configured for Vercel's Python runtime through `api/index.py` and `vercel.json`. When the `DATABASE_URL` environment variable is set, the app uses PostgreSQL through Psycopg; without it, local development uses SQLite. On Vercel, `DATABASE_URL` is required so ephemeral filesystem storage is never used as the production database.
+
+1. In Supabase, open the active project and choose **Connect**.
+2. Copy the **Transaction pooler** connection string. Keep the password private; don't commit it or paste it into source files.
+3. In Vercel Project Settings → Environment Variables, add `DATABASE_URL` for Production, Preview, and Development. Use the connection string as a sensitive secret.
+4. Redeploy after saving the variable.
+
+The current schema migration is tracked in `supabase/migrations/`. Tables have Row Level Security enabled and no access granted to the public `anon` or `authenticated` roles. The FastAPI application connects server-side using the database connection string; keep this backend private until authentication and authorization are implemented.
+
 ## Tests
 
 From `backend/`, install requirements, then run `pytest -q`.
