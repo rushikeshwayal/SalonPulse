@@ -1,11 +1,31 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import SessionLocal, StaffUser, app, hash_password
+
+TEST_PASSWORD = "CI-Only-Password-2026!"
+
+
+def login_as(client, username="owner"):
+    with SessionLocal() as db:
+        user = db.query(StaffUser).filter_by(username=username).first()
+        assert user, f"Expected seeded test user {username}"
+        user.password_hash = hash_password(TEST_PASSWORD)
+        user.must_change_password = False
+        user.is_active = True
+        db.commit()
+    response = client.post("/api/auth/login", json={
+        "identifier": username, "password": TEST_PASSWORD
+    })
+    assert response.status_code == 200, response.text
+    client.headers.update({"Authorization": "Bearer " + response.json()["access_token"]})
+    return response.json()["user"]
 
 
 def test_demo_api_happy_path():
     """Exercise the demo workflow against a reset SQLite demo database."""
     with TestClient(app) as client:
+        assert client.get("/api/dashboard").status_code == 401
+        login_as(client)
         assert client.post("/api/demo/reset").status_code == 200
 
         health = client.get("/api/health")
@@ -54,7 +74,8 @@ def test_demo_api_happy_path():
         bootstrap = client.get("/api/bootstrap").json()
         assert set(bootstrap) == {
             "dashboard", "branches", "barbers", "customers", "visits",
-            "feedback", "tasks", "insights", "messages", "serviceCatalog",
+            "user", "dashboard", "branches", "barbers", "customers", "visits",
+            "feedback", "tasks", "insights", "messages", "serviceCatalog", "auditLogs",
         }
         assert bootstrap["dashboard"]["total_visits"] >= 1
         assert bootstrap["branches"] and bootstrap["serviceCatalog"]
@@ -63,6 +84,7 @@ def test_demo_api_happy_path():
 
 def test_customer_lookup_and_multi_service_visit():
     with TestClient(app) as client:
+        login_as(client)
         client.post("/api/demo/reset")
         branches = client.get("/api/branches").json()
         barbers = client.get("/api/barbers").json()
@@ -122,3 +144,62 @@ def test_customer_lookup_and_multi_service_visit():
         assert returning.json()["visit"]["customer_id"] == visit["customer_id"]
         client.post("/api/demo/reset")
 
+
+
+def test_roles_audit_versions_and_barber_rating():
+    with TestClient(app) as client:
+        owner = login_as(client, "owner")
+        branches = client.get("/api/branches").json()
+        barbers = client.get("/api/barbers").json()
+        branch = branches[0]
+        barber = next(b for b in barbers if b["branch_id"] == branch["id"])
+        created = client.post("/api/visits", json={
+            "customer_name": "Version Test Client",
+            "customer_phone": "9876500011",
+            "customer_location": "Pune",
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "services": [{"service_name": "Haircut", "quantity": 1, "unit_price": 300}],
+        })
+        assert created.status_code == 201, created.text
+        visit = created.json()["visit"]
+
+        edited = client.patch(f"/api/visits/{visit['id']}", json={
+            "services": [
+                {"service_name": "Haircut", "quantity": 1, "unit_price": 350},
+                {"service_name": "Hair Wash", "quantity": 1, "unit_price": 100},
+            ],
+            "change_note": "Corrected checkout total",
+        })
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["visit"]["amount"] == 450
+
+        history = client.get(f"/api/visits/{visit['id']}/history")
+        assert history.status_code == 200
+        assert {item["action"] for item in history.json()} >= {"visit.create", "visit.update"}
+        assert history.json()[0]["before_data"] is not None
+        assert client.get("/api/staff-users").status_code == 200
+
+        # The barber only sees their own assigned visit and cannot view owner-only staff data.
+        login_as(client, "aarav")
+        barber_visits = client.get("/api/visits").json()
+        assert all(item["barber_id"] == 1 for item in barber_visits)
+        assert client.get("/api/staff-users").status_code == 403
+        assert client.get("/api/audit-logs").status_code == 200
+
+        own_branch = next(b for b in client.get("/api/branches").json())
+        created_by_barber = client.post("/api/visits", json={
+            "customer_name": "Barber Rated Client",
+            "customer_phone": "9876500012",
+            "customer_location": "Pune",
+            "branch_id": own_branch["id"],
+            "barber_id": 999,  # backend derives barber identity from the signed-in account
+            "services": [{"service_name": "Haircut", "quantity": 1, "unit_price": 300}],
+        })
+        assert created_by_barber.status_code == 201, created_by_barber.text
+        barber_visit = created_by_barber.json()["visit"]
+        rating = client.post("/api/customer-ratings", json={
+            "visit_id": barber_visit["id"], "rating": 5, "note": "Arrived on time and communicated clearly."
+        })
+        assert rating.status_code == 201, rating.text
+        assert client.get("/api/customer-ratings").json()[0]["rating"] == 5
