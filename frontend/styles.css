@@ -545,3 +545,46 @@ details.customer-visit-group[open]>.customer-visit-group-heading .customer-group
  .customer-review-card-heading{align-items:flex-start}
  .customer-review-card-heading time{max-width:55%}
 }
+
+
+/* Barber notifications: customer feedback only; no audit-log presentation */
+.notification-nav-icon{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.notification-nav-icon>svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.notification-badge{position:absolute;top:-7px;right:-9px;min-width:16px;height:16px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border:2px solid #fff;border-radius:999px;background:#e75268;color:#fff;font:800 8px 'DM Sans';line-height:1;box-shadow:0 1px 4px #2c23451a}
+.notification-badge[hidden]{display:none!important}
+.notification-panel .panel-title{align-items:center;gap:12px}
+.notification-count{flex-shrink:0;border:1px solid #e5e1ff;border-radius:8px;background:#f3f1ff;color:#6657d7;padding:7px 9px;font-size:9px;font-weight:800}
+#notificationsList{display:flex;flex-direction:column;gap:9px}
+.notification-card{display:flex;align-items:flex-start;gap:11px;width:100%;min-width:0;padding:14px;border:1px solid #e9e8f2;border-radius:12px;background:#fff;color:inherit;text-align:left;cursor:pointer;transition:background .16s ease,border-color .16s ease,transform .16s ease}
+.notification-card:hover{background:#fcfbff;border-color:#d7d1ff;transform:translateY(-1px)}
+.notification-card:focus-visible{outline:3px solid #d7d0ff;outline-offset:2px}
+.notification-card:active{transform:scale(.995)}
+.notification-card-icon{display:grid;place-items:center;width:36px;height:36px;flex:0 0 auto;border-radius:11px;background:#efedff;color:var(--purple)}
+.notification-card-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.notification-card-main{display:flex;flex-direction:column;gap:7px;min-width:0;flex:1}
+.notification-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.notification-card-top strong{font-size:11px;line-height:1.45;color:var(--ink)}
+.notification-card-top time{font-size:8px;line-height:1.5;color:var(--muted);text-align:right;flex-shrink:0}
+.notification-card-customer{font-size:10px;color:#4d5167;line-height:1.5;overflow-wrap:anywhere}
+.notification-card-customer> b{color:var(--ink);margin-left:4px}
+.notification-card-message{display:block;font-size:10px;line-height:1.6;color:#65697d;white-space:pre-wrap;overflow-wrap:anywhere}
+.notification-card-message.muted{font-style:italic;color:var(--muted)}
+.notification-card-meta{font-size:8px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.notification-card-chevron{flex:0 0 auto;color:#989bac;font-size:23px;line-height:1;margin-top:3px;transition:transform .16s ease,color .16s ease}
+.notification-card:hover .notification-card-chevron{color:var(--purple);transform:translateX(2px)}
+.notification-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:34px 18px;border:1px dashed #dedbed;border-radius:13px;background:#fcfbff}
+.notification-empty-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:15px;background:#efedff;color:var(--purple);margin-bottom:12px}
+.notification-empty-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.notification-empty strong{font:800 13px Manrope;color:var(--ink)}
+.notification-empty p{max-width:320px;margin:7px 0 0;color:var(--muted);font-size:10px;line-height:1.6}
+@media(max-width:520px){
+ .notification-panel{padding:15px}
+ .notification-card{padding:11px;gap:9px}
+ .notification-card-icon{width:32px;height:32px;border-radius:10px}
+ .notification-card-top{flex-direction:column;gap:3px}
+ .notification-card-top time{text-align:left}
+ .notification-count{padding:6px 7px;font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+ .notification-card,.notification-card-chevron{transition:none}
+}
