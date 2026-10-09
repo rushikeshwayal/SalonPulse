@@ -48,15 +48,6 @@
   </button>
 </header>
 <main>
-  <section class="hero" id="workspaceHero" data-barber-view="overview">
-    <div><p id="workspaceEyebrow" class="eyebrow">SALON OPERATIONS</p><h1 id="workspaceTitle">Hear what customers<br>don't always say.</h1><p id="workspaceSubtitle" class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
-    <button id="newVisitOwner" class="primary" data-owner-only>✦ Start a check-in</button>
-  </section>
-  <section class="stats" id="stats" data-barber-view="overview"></section>
-  <section class="barber-start-card" id="startVisitSection" data-barber-only data-barber-view="overview">
-    <div><strong>Just served a customer?</strong><p>Record the visit, services, and total in a few steps.</p></div>
-    <button id="newVisit" class="primary">＋ Start recording</button>
-  </section>
   <nav id="barberNav" class="workspace-nav" data-barber-only aria-label="Barber workspace pages">
     <button type="button" class="workspace-tab active" data-barber-tab="overview" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.5 10.5 8.5-7 8.5 7M5.5 9.5v10h5v-6h3v6h5v-10"/></svg><span>Overview</span>
@@ -74,6 +65,16 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>Activity</span>
     </button>
   </nav>
+  <section class="hero" id="workspaceHero" data-barber-view="overview">
+    <div><p id="workspaceEyebrow" class="eyebrow">SALON OPERATIONS</p><h1 id="workspaceTitle">Hear what customers<br>don't always say.</h1><p id="workspaceSubtitle" class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
+    <button id="newVisitOwner" class="primary" data-owner-only>✦ Start a check-in</button>
+  </section>
+  <section class="stats" id="stats" data-barber-view="overview"></section>
+  <section class="barber-start-card" id="startVisitSection" data-barber-only data-barber-view="overview">
+    <div><strong>Just served a customer?</strong><p>Record the visit, services, and total in a few steps.</p></div>
+    <button id="newVisit" class="primary">＋ Start recording</button>
+  </section>
+
   <section class="grid" id="feedbackSection" data-barber-view="feedback">
     <article class="panel"><div class="panel-title"><div><h2>Private feedback inbox</h2><p>Feedback for visits assigned to your account.</p></div><button id="newFeedback" class="secondary">＋ Record feedback</button></div><div id="feedback"></div></article>
     <article class="panel" data-owner-only><div class="panel-title"><div><h2>Service recovery</h2><p>Track issues until they're resolved.</p></div></div><div id="tasks"></div></article>
