@@ -1,2 +1,71 @@
 # SalonPulse
-A salon feedback and customer experience platform built with FastAPI, Python, and SQLite.
+
+SalonPulse is a runnable demo for collecting salon feedback, monitoring customer experience, and tracking follow-up tasks. It uses **Python + FastAPI**, **SQLAlchemy**, and **SQLite**, with a lightweight static frontend served by FastAPI.
+
+## Features
+
+- Dashboard with visits, average rating, and open recovery tasks
+- Seeded demo branches, barbers, customers, visits and feedback
+- Low feedback scores automatically create a recovery task
+- Manage recovery task status
+- Branch and barber insights
+- Mock message log (does not send real WhatsApp messages)
+- Interactive API documentation at `/docs`
+- Tests and a GitHub Actions workflow
+
+## Run locally
+
+Requires Python 3.10+.
+
+### Windows PowerShell
+
+```powershell
+cd backend
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+### macOS / Linux
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Open:
+
+- Frontend: http://127.0.0.1:8000
+- API docs: http://127.0.0.1:8000/docs
+- Health: http://127.0.0.1:8000/api/health
+
+SQLite database is created locally under `backend/` on first run. Demo rows are seeded when the database is empty.
+
+## Main API routes
+
+- `GET /api/health`
+- `GET /api/dashboard`
+- `GET /api/branches`
+- `GET /api/barbers`
+- `GET /api/customers`
+- `GET /api/visits`
+- `POST /api/visits`
+- `GET /api/feedback`
+- `POST /api/feedback`
+- `GET /api/recovery-tasks`
+- `PATCH /api/recovery-tasks/{task_id}`
+- `GET /api/insights`
+- `GET /api/messages`
+- `POST /api/demo/reset`
+
+## Tests
+
+From `backend/`, install requirements, then run `pytest -q`.
+
+## Important limitations
+
+This is a local demo with fictional seeded data. The message log is mocked; it does not contact WhatsApp or another provider. Before production, add authentication and authorization, migrations, environment-based configuration, rate limiting, structured logging, privacy/retention policies, and real provider integration with user consent.
