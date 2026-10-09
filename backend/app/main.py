@@ -1277,15 +1277,64 @@ def get_messages(limit: int = Query(default=10, ge=1, le=50), db: Session = Depe
     return message_rows(db, user, limit)
 
 
+@app.get("/api/notifications")
+def get_notifications(limit: int = Query(default=50, ge=1, le=100),
+                      db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    """Show feedback received on visits visible to this account; never expose audit events here."""
+    query = db.query(Feedback, Visit, Customer, Branch, Barber).join(
+        Visit, Visit.id == Feedback.visit_id
+    ).join(Customer, Customer.id == Visit.customer_id).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(Barber, Barber.id == Visit.barber_id)
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    rows = query.order_by(Feedback.created_at.desc(), Feedback.id.desc()).limit(limit).all()
+    visit_sequences: dict[int, tuple[int, int]] = {}
+    history_rows = db.query(Visit.id, Visit.customer_id).order_by(
+        Visit.completed_at.desc(), Visit.id.desc()
+    ).all()
+    per_customer: dict[int, list[int]] = {}
+    for history_visit_id, customer_id in history_rows:
+        per_customer.setdefault(customer_id, []).append(history_visit_id)
+    for ids in per_customer.values():
+        for index, history_visit_id in enumerate(ids):
+            visit_sequences[history_visit_id] = (len(ids) - index, len(ids))
+
+    notifications = []
+    for feedback, visit, customer, branch, barber in rows:
+        number, total = visit_sequences.get(visit.id, (1, 1))
+        notifications.append({
+            "id": "feedback-" + str(feedback.id),
+            "type": "customer_feedback",
+            "title": "Customer feedback received",
+            "message": (feedback.comment or "").strip(),
+            "customer_id": customer.id,
+            "customer_name": customer.name,
+            "visit_id": visit.id,
+            "visit_number": number,
+            "visit_count": total,
+            "rating": feedback.rating,
+            "service_name": visit.service_name,
+            "amount": visit.amount,
+            "branch_name": branch.name,
+            "barber_name": barber.name,
+            "created_at": utc_iso(feedback.created_at),
+            "completed_at": utc_iso(visit.completed_at),
+            "is_read": False,
+        })
+    return {
+        "notifications": notifications,
+        "unread_count": len(notifications),
+    }
+
+
 @app.get("/api/audit-logs")
 def get_audit_logs(limit: int = Query(default=50, ge=1, le=100), db: Session = Depends(get_db),
-                   user: dict = Depends(get_current_user)):
-    query = db.query(AuditLog)
-    if user["role"] == "barber":
-        visit_ids = db.query(Visit.id).filter(Visit.barber_id == user["barber_id"]).subquery()
-        query = query.filter(or_(AuditLog.actor_user_id == user["id"],
-            and_(AuditLog.entity_type == "visit", AuditLog.entity_id.in_(visit_ids))))
-    rows = query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).all()
+                   user: dict = Depends(require_owner)):
+    # Audit logs are management-only, not part of the barber-facing workspace.
+    rows = db.query(AuditLog).order_by(
+        AuditLog.created_at.desc(), AuditLog.id.desc()
+    ).limit(limit).all()
     return [{
         "id": r.id, "actor_user_id": r.actor_user_id, "actor_username": r.actor_username,
         "actor_role": r.actor_role, "action": r.action, "entity_type": r.entity_type,
@@ -1376,5 +1425,6 @@ def bootstrap(db: Session = Depends(get_db), user: dict = Depends(get_current_us
         "feedback": feedback_rows(db, user, 20), "tasks": task_rows(db, user, 20),
         "insights": insight_data(db, user),
         "messages": message_rows(db, user, 10) if user["role"] == "owner" else [],
-        "serviceCatalog": SERVICE_CATALOG, "auditLogs": audit_logs_initial(db, user),
+        "serviceCatalog": SERVICE_CATALOG,
+        "auditLogs": audit_logs_initial(db, user) if user["role"] == "owner" else [],
     }
