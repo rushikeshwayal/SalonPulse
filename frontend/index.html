@@ -7,33 +7,68 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+<section id="loginScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-mark">S</div>
+    <p class="eyebrow">SALONPULSE OPERATIONS</p>
+    <h1>Your shop.<br>Your insights.</h1>
+    <p class="auth-copy">Sign in to your owner or barber workspace.</p>
+    <form id="loginForm">
+      <label>Username or email<input name="identifier" id="loginIdentifier" autocomplete="username" required placeholder="e.g. owner or owner@salonpulse.demo"></label>
+      <label>Password<input name="password" id="loginPassword" type="password" autocomplete="current-password" required placeholder="Enter your password"></label>
+      <button id="loginButton" class="primary" type="submit">Sign in <span>→</span></button>
+      <p id="loginError" class="form-error" role="alert" hidden></p>
+    </form>
+    <p class="auth-footnote">Demo accounts require a password change on first sign-in. Use the temporary credentials supplied with this setup.</p>
+  </div>
+</section>
+<section id="passwordChangeScreen" class="auth-screen" hidden>
+  <div class="auth-card">
+    <div class="auth-mark">S</div>
+    <p class="eyebrow">SECURE YOUR ACCOUNT</p>
+    <h1>Choose a new password.</h1>
+    <p class="auth-copy">This is a temporary demo password. Change it before opening your workspace.</p>
+    <form id="passwordChangeForm">
+      <label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>
+      <label>New password<input id="newPassword" name="new_password" type="password" autocomplete="new-password" minlength="12" required placeholder="At least 12 characters"></label>
+      <label>Confirm new password<input id="confirmPassword" type="password" autocomplete="new-password" minlength="12" required></label>
+      <button id="changePasswordButton" class="primary" type="submit">Save new password <span>→</span></button>
+      <p id="passwordChangeError" class="form-error" role="alert" hidden></p>
+    </form>
+    <button id="cancelPasswordChange" class="text-action" type="button">Sign out</button>
+  </div>
+</section>
+<div id="appShell" hidden>
 <header>
-  <div><span class="logo">S</span><span><b>SalonPulse</b><small>Customer experience for salon groups</small></span></div>
-  <span class="pill">DEMO · WHATSAPP MOCK MODE</span>
+  <div class="brand-lockup"><span class="logo">S</span><span><b>SalonPulse</b><small>Customer experience workspace</small></span></div>
+  <div class="session-actions"><div><strong id="currentUser"></strong><small id="currentRole"></small></div><button id="logout" class="secondary">Sign out</button></div>
 </header>
 <main>
   <section class="hero">
-    <div><p class="eyebrow">MULTI-BRANCH SALON DEMO</p><h1>Hear what customers<br>don't always say.</h1><p class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
+    <div><p id="workspaceEyebrow" class="eyebrow">SALON OPERATIONS</p><h1 id="workspaceTitle">Hear what customers<br>don't always say.</h1><p id="workspaceSubtitle" class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
     <button id="newVisit" class="primary">✦ Start a check-in</button>
   </section>
   <section class="stats" id="stats"></section>
   <section class="grid">
     <article class="panel"><div class="panel-title"><div><h2>Private feedback inbox</h2><p>Visible to authorized management in this demo.</p></div><button id="newFeedback" class="secondary">＋ Record feedback</button></div><div id="feedback"></div></article>
-    <article class="panel"><div class="panel-title"><div><h2>Service recovery</h2><p>Track issues until they're resolved.</p></div></div><div id="tasks"></div></article>
+    <article class="panel" data-owner-only><div class="panel-title"><div><h2>Service recovery</h2><p>Track issues until they're resolved.</p></div></div><div id="tasks"></div></article>
   </section>
   <section class="grid">
-    <article class="panel"><div class="panel-title"><div><h2>Branch insights</h2><p>Descriptive demo data, not proof of causation.</p></div></div><div id="branches"></div></article>
-    <article class="panel"><div class="panel-title"><div><h2>Recent visits</h2><p>Service and feedback history.</p></div></div><div id="visits"></div></article>
+    <article class="panel" data-owner-only><div class="panel-title"><div><h2>Branch performance</h2><p>Revenue and guest experience by store.</p></div></div><div id="branches"></div></article>
+    <article class="panel"><div class="panel-title"><div><h2 id="visitListTitle">Recent visits</h2><p id="visitListSubtitle">Service, customer, and change history.</p></div></div><div id="visits"></div></article>
   </section>
-  <section class="panel"><div class="panel-title"><div><h2>Message log</h2><p>Preview queue events. No real WhatsApp messages are sent.</p></div><button id="reset" class="secondary">Reset demo</button></div><div id="messages"></div></section>
+  <section class="panel" data-owner-only><div class="panel-title"><div><h2>Message activity</h2><p>Preview queue events. No real WhatsApp messages are sent.</p></div><button id="reset" class="secondary">Reset demo</button></div><div id="messages"></div></section>
+  <section class="panel" data-owner-only><div class="panel-title"><div><h2>Employee performance</h2><p>Revenue, visits, and feedback by barber.</p></div></div><div id="employeeInsights"></div></section>
+  <section class="panel"><div class="panel-title"><div><h2>Activity &amp; version history</h2><p>Every saved visit edit creates a permanent audit record.</p></div><button id="refreshAudit" class="secondary">Refresh history</button></div><div id="activityLog"></div></section>
   <p class="foot">Prototype only · Fictional seed data · No real WhatsApp delivery · API docs: <a href="/docs">/docs</a></p>
 </main>
+</div>
 <dialog id="visitDialog" class="visit-dialog">
   <form id="visitForm">
     <div class="dialog-heading"><div><p class="eyebrow">CLIENT CHECK-IN</p><h2>Start a better visit</h2><p class="muted">Recognize your client, capture the service, keep the relationship going.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
     <section class="form-section">
       <div class="section-heading"><span class="step">1</span><div><h3>Customer</h3><p>Look up a returning customer or register a new one.</p></div></div>
-      <div class="customer-type">
+      <div id="customerTypeOptions" class="customer-type">
         <label class="choice"><input type="radio" name="customer_type" value="returning"><span><strong>Returning customer</strong><small>Find by phone or name</small></span></label>
         <label class="choice"><input type="radio" name="customer_type" value="new" checked><span><strong>New customer</strong><small>Save contact details</small></span></label>
       </div>
@@ -72,6 +107,22 @@
   </form>
 </dialog>
 <dialog id="feedbackDialog"><form id="feedbackForm"><h2>Record private feedback</h2><label>Visit<select name="visit_id" id="feedbackVisit" required></select></label><label>Rating<select name="rating"><option value="1">1 — Very poor</option><option value="2">2 — Poor</option><option value="3" selected>3 — Okay</option><option value="4">4 — Good</option><option value="5">5 — Excellent</option></select></label><label>Comment<textarea name="comment" rows="3" placeholder="What could the salon improve?"></textarea></label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Save feedback</button></div></form></dialog>
+<dialog id="historyDialog" class="history-dialog">
+  <div class="dialog-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2>Visit history</h2><p class="muted">Previous versions are retained after edits.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
+  <div id="historyContent"><p class="empty">Loading history…</p></div>
+  <div class="actions"><button type="button" class="secondary close">Close</button></div>
+</dialog>
+<dialog id="customerRatingDialog" class="rating-dialog">
+  <form id="customerRatingForm">
+    <div class="dialog-heading"><div><p class="eyebrow">VISIT NOTE</p><h2>Rate this interaction</h2><p class="muted">Keep it professional and specific to this visit.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
+    <input type="hidden" name="visit_id" id="customerRatingVisitId">
+    <div id="customerRatingClient" class="rating-client"></div>
+    <label>Visit interaction rating<select name="rating" required><option value="5">5 — Excellent interaction</option><option value="4">4 — Good</option><option value="3">3 — Neutral</option><option value="2">2 — Difficult interaction</option><option value="1">1 — Significant issue</option></select></label>
+    <label>Optional note<textarea name="note" rows="3" maxlength="1000" placeholder="For example: late arrival or repeated appointment changes. Stick to factual, service-related observations."></textarea></label>
+    <p class="muted">This is an internal visit-specific note, not a public review. Avoid personal traits, protected characteristics, or insulting language.</p>
+    <div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary" id="saveCustomerRating">Save visit note</button></div>
+  </form>
+</dialog>
 <div id="toast"></div>
 <script src="/static/app.js"></script>
 </body>
