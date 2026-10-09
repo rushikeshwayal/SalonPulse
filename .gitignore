@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/salonpulse.db
+.env
+.pytest_cache/
