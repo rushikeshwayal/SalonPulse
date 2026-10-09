@@ -12,8 +12,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-ROOT = Path(__file__).resolve().parents[1]
-FRONTEND = ROOT.parent / "frontend"
+# Vercel may package the FastAPI module at a different depth than the repo.
+# Search the common repo/runtime locations instead of assuming frontend is a parent of ROOT.
+APP_FILE = Path(__file__).resolve()
+ROOT = APP_FILE.parents[1]
+_FRONTEND_CANDIDATES = (
+    ROOT.parent / "frontend",          # repository layout: backend/app/main.py
+    Path.cwd() / "frontend",           # Vercel project-root layout
+    APP_FILE.parent.parent / "frontend",  # flattened function bundle layout
+)
+FRONTEND = next(
+    (candidate for candidate in _FRONTEND_CANDIDATES if (candidate / "index.html").is_file()),
+    _FRONTEND_CANDIDATES[0],
+)
 DB = ROOT / "salonpulse.db"
 
 def resolve_database_url() -> str:
