@@ -357,9 +357,13 @@ def seed(db: Session, reset: bool = False):
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
-    with SessionLocal() as db:
-        seed(db)
+    # Local SQLite is self-contained, so create/seed its demo schema on startup.
+    # Production Postgres is managed by checked-in Supabase migrations; avoid schema
+    # introspection and demo-seed queries on every serverless cold start.
+    if DATABASE_URL.startswith("sqlite:"):
+        Base.metadata.create_all(bind=engine)
+        with SessionLocal() as db:
+            seed(db)
 
 
 @app.get("/", include_in_schema=False)
@@ -396,19 +400,20 @@ def get_barbers(branch_id: Optional[int] = None, db: Session = Depends(get_db)):
 def search_customers(q: str = Query(min_length=1, max_length=120), db: Session = Depends(get_db)):
     term = q.strip()
     digits = normalize_phone(term)
-    customers = db.query(Customer).order_by(Customer.name).all()
+    # Reuse the batched customer/visit summary query; no per-result database queries.
+    customers = get_customers(db)
     matches = []
-    for c in customers:
-        name_match = term.casefold() in c.name.casefold()
-        phone_digits = normalize_phone(c.phone)
+    for customer in customers:
+        name_match = term.casefold() in customer["name"].casefold()
+        phone_digits = normalize_phone(customer["phone"])
         phone_match = bool(digits) and (
             phone_digits == digits or (len(digits) >= 3 and digits in phone_digits)
         )
         if name_match or phone_match:
-            matches.append(c)
+            matches.append(customer)
     if digits:
-        matches.sort(key=lambda c: normalize_phone(c.phone) != digits)
-    return [customer_json(db, c) for c in matches[:10]]
+        matches.sort(key=lambda customer: normalize_phone(customer["phone"]) != digits)
+    return matches[:10]
 
 
 @app.get("/api/customers")
