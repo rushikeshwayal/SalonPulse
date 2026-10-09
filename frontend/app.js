@@ -93,7 +93,7 @@ async function initAuth() {
       showPasswordChange();
       return;
     }
-    await load();
+    await initAuth();
   } catch (e) {
     showLogin(e.status === 401 ? "" : e.message);
   }
@@ -264,6 +264,8 @@ function populateBarbers() {
 function openVisitDialog() {
   editingVisitId = null;
   $("#visitForm").reset();
+  $("#editReasonLabel").hidden = true;
+  $("#changeNote").value = "";
   $("#customerTypeOptions").hidden = false;
   $("#visitDialog").querySelector(".eyebrow").textContent = "CLIENT CHECK-IN";
   $("#visitDialog").querySelector("h2").textContent = "Start a better visit";
@@ -417,6 +419,7 @@ function openEditVisit(id) {
   $("#visitDialog").querySelector(".eyebrow").textContent = "VERSIONED EDIT";
   $("#visitDialog").querySelector("h2").textContent = "Update visit record";
   $("#saveVisit").textContent = "Save changes";
+  $("#editReasonLabel").hidden = false;
   $("#customerTypeOptions").hidden = true;
   $("input[name='customer_type'][value='returning']").checked = true;
   toggleCustomerType();
@@ -563,6 +566,39 @@ $("#newCustomerMatchNotice").addEventListener("click", e => {
 });
 $("#newCustomerPhone").addEventListener("blur", checkNewCustomerPhone);
 
+$("#visits").addEventListener("click", async e => {
+  const edit = e.target.closest("[data-edit-visit]");
+  const history = e.target.closest("[data-history-visit]");
+  const rate = e.target.closest("[data-rate-visit]");
+  if (edit) return openEditVisit(Number(edit.dataset.editVisit));
+  if (history) return openVisitHistory(Number(history.dataset.historyVisit));
+  if (rate) return openCustomerRating(Number(rate.dataset.rateVisit));
+});
+$("#refreshAudit").addEventListener("click", async () => {
+  try {
+    data.auditLogs = await api("/api/audit-logs?limit=50");
+    render();
+    toast("Audit history refreshed.");
+  } catch (err) { toast(err.message); }
+});
+$("#customerRatingForm").onsubmit = async e => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const button = $("#saveCustomerRating");
+  button.disabled = true;
+  try {
+    await api("/api/customer-ratings", {method:"POST", body:JSON.stringify({
+      visit_id: Number(form.get("visit_id")),
+      rating: Number(form.get("rating")),
+      note: String(form.get("note") || "").trim()
+    })});
+    $("#customerRatingDialog").close();
+    await load();
+    toast("Visit interaction note saved to the audit trail.");
+  } catch (err) { toast(err.message); }
+  finally { button.disabled = false; }
+};
+
 $("#visitForm").onsubmit = async e => {
   e.preventDefault();
   const type = $("input[name='customer_type']:checked").value;
@@ -592,7 +628,14 @@ $("#visitForm").onsubmit = async e => {
     services,
     messaging_consent: $("input[name='messaging_consent']").checked
   };
-  if (type === "returning") {
+  if (editingVisitId) {
+    if (!confirmedCustomer) {
+      toast("Select and confirm the customer for this visit before saving.");
+      return;
+    }
+    payload.customer_id = confirmedCustomer.id;
+    payload.change_note = $("#changeNote").value.trim();
+  } else if (type === "returning") {
     if (!confirmedCustomer) {
       toast("Please review and confirm the returning customer's details first.");
       return;
@@ -608,18 +651,24 @@ $("#visitForm").onsubmit = async e => {
     }
   }
   const save = $("#saveVisit");
+  const wasEditing = Boolean(editingVisitId);
   save.disabled = true;
   save.textContent = "Saving…";
   try {
-    const r = await api("/api/visits", {method:"POST", body:JSON.stringify(payload)});
+    const result = wasEditing
+      ? await api("/api/visits/" + editingVisitId, {method:"PATCH", body:JSON.stringify(payload)})
+      : await api("/api/visits", {method:"POST", body:JSON.stringify(payload)});
     $("#visitDialog").close();
+    editingVisitId = null;
     await load();
-    toast(`Check-in saved · Total ${money(r.visit.amount)}. ${r.notice}`);
+    toast(wasEditing
+      ? "Visit updated. The previous version is preserved in history."
+      : `Check-in saved · Total ${money(result.visit.amount)}. ${result.notice}`);
   } catch (err) {
     toast(err.message);
   } finally {
     save.disabled = false;
-    save.textContent = "Complete check-in";
+    save.textContent = editingVisitId ? "Save changes" : "Complete check-in";
   }
 };
 $("#feedbackForm").onsubmit = async e => {
