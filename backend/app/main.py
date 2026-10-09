@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, case, create_engine, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 # Vercel may package the FastAPI module at a different depth than the repo.
@@ -190,6 +190,14 @@ def normalize_phone(value: str | None) -> str:
     elif len(digits) == 11 and digits.startswith("0"):
         digits = digits[1:]
     return digits
+
+
+def utc_iso(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.isoformat() + "Z"
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def customer_json(db: Session, customer: Customer) -> dict:
@@ -405,34 +413,105 @@ def search_customers(q: str = Query(min_length=1, max_length=120), db: Session =
 
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db)):
-    return [customer_json(db, c) for c in db.query(Customer).order_by(Customer.name).all()]
-
+    # Fetch visit counts and most recent visit once instead of two queries per customer.
+    stats = db.query(
+        Visit.customer_id,
+        func.count(Visit.id).label("visit_count"),
+        func.max(Visit.completed_at).label("last_visit"),
+    ).group_by(Visit.customer_id).all()
+    by_customer = {row.customer_id: row for row in stats}
+    customers = db.query(Customer).order_by(Customer.name).all()
+    result = []
+    for customer in customers:
+        row = by_customer.get(customer.id)
+        result.append({
+            "id": customer.id,
+            "name": customer.name,
+            "phone": customer.phone,
+            "location": customer.location or "",
+            "messaging_consent": customer.messaging_consent,
+            "visit_count": int(row.visit_count) if row else 0,
+            "last_visit": utc_iso(row.last_visit) if row else None,
+        })
+    return result
 
 @app.get("/api/dashboard")
 def dashboard(db: Session = Depends(get_db)):
-    visits = db.query(Visit).count()
-    revenue = db.query(func.coalesce(func.sum(Visit.amount), 0)).scalar() or 0
-    feedbacks = db.query(Feedback).all()
-    low = sum(1 for f in feedbacks if f.rating <= 2)
-    tasks = db.query(RecoveryTask).filter(RecoveryTask.status != "resolved").count()
-    avg = sum(f.rating for f in feedbacks) / len(feedbacks) if feedbacks else None
-    unique = db.query(Visit.customer_id).distinct().count()
-    repeats = db.query(Visit.customer_id).group_by(Visit.customer_id).having(func.count(Visit.id) > 1).count()
+    visit_row = db.query(
+        func.count(Visit.id),
+        func.coalesce(func.sum(Visit.amount), 0),
+    ).one()
+    feedback_row = db.query(
+        func.count(Feedback.id),
+        func.avg(Feedback.rating),
+        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0),
+    ).one()
+    open_tasks = db.query(func.count(RecoveryTask.id)).filter(
+        RecoveryTask.status != "resolved"
+    ).scalar() or 0
+    unique = db.query(func.count(func.distinct(Visit.customer_id))).scalar() or 0
+    repeat_rows = db.query(Visit.customer_id).group_by(Visit.customer_id).having(
+        func.count(Visit.id) > 1
+    ).subquery()
+    repeats = db.query(func.count()).select_from(repeat_rows).scalar() or 0
+    visit_count, revenue = int(visit_row[0]), float(visit_row[1] or 0)
+    feedback_count, average_rating, low_count = feedback_row
     return {
-        "total_visits": visits, "revenue": round(float(revenue), 2), "feedback_count": len(feedbacks),
-        "low_feedback_count": low, "open_recovery_tasks": tasks,
-        "average_rating": round(avg, 1) if avg else None,
-        "feedback_response_rate": round(len(feedbacks) / visits * 100, 1) if visits else 0,
+        "total_visits": visit_count,
+        "revenue": round(revenue, 2),
+        "feedback_count": int(feedback_count),
+        "low_feedback_count": int(low_count),
+        "open_recovery_tasks": int(open_tasks),
+        "average_rating": round(float(average_rating), 1) if average_rating is not None else None,
+        "feedback_response_rate": round(feedback_count / visit_count * 100, 1) if visit_count else 0,
         "repeat_customer_rate": round(repeats / unique * 100, 1) if unique else 0,
-        "branches": db.query(Branch).count(), "barbers": db.query(Barber).count(),
+        "branches": db.query(func.count(Branch.id)).scalar() or 0,
+        "barbers": db.query(func.count(Barber.id)).scalar() or 0,
     }
 
-
 @app.get("/api/visits")
-def get_visits(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
-    return [visit_json(db, v)
-            for v in db.query(Visit).order_by(Visit.completed_at.desc()).limit(limit).all()]
-
+def get_visits(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
+    # Join related data in one query. Fetch all service lines in one additional query.
+    rows = db.query(Visit, Customer, Branch, Barber, Feedback).join(
+        Customer, Customer.id == Visit.customer_id
+    ).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(
+        Barber, Barber.id == Visit.barber_id
+    ).outerjoin(
+        Feedback, Feedback.visit_id == Visit.id
+    ).order_by(Visit.completed_at.desc()).limit(limit).all()
+    visit_ids = [row[0].id for row in rows]
+    service_map = {}
+    if visit_ids:
+        service_rows = db.query(VisitService).filter(
+            VisitService.visit_id.in_(visit_ids)
+        ).order_by(VisitService.id).all()
+        for service in service_rows:
+            service_map.setdefault(service.visit_id, []).append({
+                "service_name": service.service_name,
+                "quantity": service.quantity,
+                "unit_price": service.unit_price,
+                "line_total": service.line_total,
+            })
+    return [{
+        "id": visit.id,
+        "customer_id": customer.id,
+        "customer_name": customer.name,
+        "customer_phone": customer.phone,
+        "customer_location": customer.location or "",
+        "branch_id": branch.id,
+        "branch_name": branch.name,
+        "barber_id": barber.id,
+        "barber_name": barber.name,
+        "service_name": visit.service_name,
+        "service_items": service_map.get(visit.id, []),
+        "amount": visit.amount,
+        "completed_at": utc_iso(visit.completed_at),
+        "feedback_requested": visit.feedback_requested,
+        "feedback_received": feedback is not None,
+        "rating": feedback.rating if feedback else None,
+    } for visit, customer, branch, barber, feedback in rows]
 
 @app.post("/api/visits", status_code=201)
 def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
@@ -513,10 +592,30 @@ def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
     }
 
 @app.get("/api/feedback")
-def get_feedback(db: Session = Depends(get_db)):
-    return [feedback_json(db, f)
-            for f in db.query(Feedback).order_by(Feedback.created_at.desc()).all()]
-
+def get_feedback(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
+    rows = db.query(Feedback, Visit, Customer, Branch, Barber, RecoveryTask).join(
+        Visit, Visit.id == Feedback.visit_id
+    ).join(
+        Customer, Customer.id == Visit.customer_id
+    ).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(
+        Barber, Barber.id == Visit.barber_id
+    ).outerjoin(
+        RecoveryTask, RecoveryTask.feedback_id == Feedback.id
+    ).order_by(Feedback.created_at.desc()).limit(limit).all()
+    return [{
+        "id": feedback.id,
+        "visit_id": visit.id,
+        "customer_name": customer.name,
+        "branch_name": branch.name,
+        "barber_name": barber.name,
+        "rating": feedback.rating,
+        "comment": feedback.comment,
+        "created_at": utc_iso(feedback.created_at),
+        "recovery_task_id": task.id if task else None,
+        "recovery_status": task.status if task else None,
+    } for feedback, visit, customer, branch, barber, task in rows]
 
 @app.post("/api/feedback", status_code=201)
 def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db)):
@@ -536,14 +635,40 @@ def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/recovery-tasks")
-def get_tasks(status: Optional[str] = None, db: Session = Depends(get_db)):
-    q = db.query(RecoveryTask)
+def get_tasks(
+    status: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    query = db.query(RecoveryTask, Feedback, Visit, Customer, Branch, Barber).join(
+        Feedback, Feedback.id == RecoveryTask.feedback_id
+    ).join(
+        Visit, Visit.id == Feedback.visit_id
+    ).join(
+        Customer, Customer.id == Visit.customer_id
+    ).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(
+        Barber, Barber.id == Visit.barber_id
+    )
     if status:
         if status not in {"open", "in_progress", "resolved"}:
             raise HTTPException(400, "Invalid status")
-        q = q.filter_by(status=status)
-    return [task_json(db, t) for t in q.order_by(RecoveryTask.created_at.desc()).all()]
-
+        query = query.filter(RecoveryTask.status == status)
+    rows = query.order_by(RecoveryTask.created_at.desc()).limit(limit).all()
+    return [{
+        "id": task.id,
+        "feedback_id": feedback.id,
+        "visit_id": visit.id,
+        "customer_name": customer.name,
+        "branch_name": branch.name,
+        "barber_name": barber.name,
+        "rating": feedback.rating,
+        "comment": feedback.comment,
+        "status": task.status,
+        "resolution_note": task.resolution_note,
+        "created_at": utc_iso(task.created_at),
+    } for task, feedback, visit, customer, branch, barber in rows]
 
 @app.patch("/api/recovery-tasks/{task_id}")
 def update_task(task_id: int, payload: RecoveryUpdate, db: Session = Depends(get_db)):
@@ -559,46 +684,92 @@ def update_task(task_id: int, payload: RecoveryUpdate, db: Session = Depends(get
 
 @app.get("/api/insights")
 def get_insights(db: Session = Depends(get_db)):
-    branch_rows = []
-    for b in db.query(Branch).all():
-        visits = db.query(Visit).filter_by(branch_id=b.id).all()
-        feedbacks = db.query(Feedback).join(Visit, Visit.id == Feedback.visit_id).filter(Visit.branch_id == b.id).all()
-        branch_rows.append({
-            "branch_id": b.id, "branch_name": b.name, "visits": len(visits),
-            "revenue": round(sum(v.amount for v in visits), 2), "feedback_count": len(feedbacks),
-            "average_rating": round(sum(f.rating for f in feedbacks) / len(feedbacks), 1) if feedbacks else None,
-            "low_rating_count": sum(1 for f in feedbacks if f.rating <= 2),
-        })
-    barber_rows = []
-    for barber in db.query(Barber).all():
-        visits = db.query(Visit).filter_by(barber_id=barber.id).all()
-        feedbacks = db.query(Feedback).join(Visit, Visit.id == Feedback.visit_id).filter(Visit.barber_id == barber.id).all()
-        branch = db.get(Branch, barber.branch_id)
-        barber_rows.append({
-            "barber_id": barber.id, "barber_name": barber.name,
-            "branch_name": branch.name if branch else "", "visits": len(visits),
-            "revenue": round(sum(v.amount for v in visits), 2), "feedback_count": len(feedbacks),
-            "average_rating": round(sum(f.rating for f in feedbacks) / len(feedbacks), 1) if feedbacks else None,
-        })
-    return {"branches": branch_rows, "barbers": barber_rows}
-
+    # Aggregate in SQL; don't load every visit and feedback row per branch/barber.
+    branch_rows = db.query(
+        Branch.id.label("branch_id"),
+        Branch.name.label("branch_name"),
+        func.count(Visit.id).label("visits"),
+        func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
+        func.count(Feedback.id).label("feedback_count"),
+        func.avg(Feedback.rating).label("average_rating"),
+        func.coalesce(func.sum(case((Feedback.rating <= 2, 1), else_=0)), 0).label("low_rating_count"),
+    ).outerjoin(
+        Visit, Visit.branch_id == Branch.id
+    ).outerjoin(
+        Feedback, Feedback.visit_id == Visit.id
+    ).group_by(Branch.id, Branch.name).all()
+    barber_rows = db.query(
+        Barber.id.label("barber_id"),
+        Barber.name.label("barber_name"),
+        Branch.name.label("branch_name"),
+        func.count(Visit.id).label("visits"),
+        func.coalesce(func.sum(Visit.amount), 0).label("revenue"),
+        func.count(Feedback.id).label("feedback_count"),
+        func.avg(Feedback.rating).label("average_rating"),
+    ).join(
+        Branch, Branch.id == Barber.branch_id
+    ).outerjoin(
+        Visit, Visit.barber_id == Barber.id
+    ).outerjoin(
+        Feedback, Feedback.visit_id == Visit.id
+    ).group_by(Barber.id, Barber.name, Branch.name).all()
+    return {
+        "branches": [{
+            "branch_id": row.branch_id,
+            "branch_name": row.branch_name,
+            "visits": int(row.visits),
+            "revenue": round(float(row.revenue or 0), 2),
+            "feedback_count": int(row.feedback_count),
+            "average_rating": round(float(row.average_rating), 1) if row.average_rating is not None else None,
+            "low_rating_count": int(row.low_rating_count),
+        } for row in branch_rows],
+        "barbers": [{
+            "barber_id": row.barber_id,
+            "barber_name": row.barber_name,
+            "branch_name": row.branch_name,
+            "visits": int(row.visits),
+            "revenue": round(float(row.revenue or 0), 2),
+            "feedback_count": int(row.feedback_count),
+            "average_rating": round(float(row.average_rating), 1) if row.average_rating is not None else None,
+        } for row in barber_rows],
+    }
 
 @app.get("/api/messages")
-def get_messages(db: Session = Depends(get_db)):
-    out = []
-    for m in db.query(MessageLog).order_by(MessageLog.created_at.desc()).all():
-        v = db.get(Visit, m.visit_id)
-        c = db.get(Customer, v.customer_id) if v else None
-        out.append({
-            "id": m.id, "visit_id": m.visit_id, "customer_name": c.name if c else "Unknown",
-            "status": m.status, "message": m.message, "created_at": m.created_at.isoformat(),
-            "channel": "whatsapp_mock",
-        })
-    return out
-
+def get_messages(limit: int = Query(default=10, ge=1, le=50), db: Session = Depends(get_db)):
+    rows = db.query(MessageLog, Visit, Customer).join(
+        Visit, Visit.id == MessageLog.visit_id
+    ).join(
+        Customer, Customer.id == Visit.customer_id
+    ).order_by(MessageLog.created_at.desc()).limit(limit).all()
+    return [{
+        "id": message.id,
+        "visit_id": visit.id,
+        "customer_name": customer.name,
+        "status": message.status,
+        "message": message.message,
+        "created_at": utc_iso(message.created_at),
+        "channel": "whatsapp_mock",
+    } for message, visit, customer in rows]
 
 @app.post("/api/demo/reset")
 def reset_demo():
     with SessionLocal() as db:
         seed(db, reset=True)
     return {"status": "ok", "message": "Demo data reset"}
+
+@app.get("/api/bootstrap")
+def bootstrap(db: Session = Depends(get_db)):
+    """One round-trip for the first dashboard paint; subroutes still work independently."""
+    return {
+        "dashboard": dashboard(db),
+        "branches": get_branches(db),
+        "barbers": get_barbers(None, db),
+        "customers": get_customers(db),
+        "visits": get_visits(20, db),
+        "feedback": get_feedback(20, db),
+        "tasks": get_tasks(None, 20, db),
+        "insights": get_insights(db),
+        "messages": get_messages(10, db),
+        "serviceCatalog": get_service_catalog(),
+    }
+
