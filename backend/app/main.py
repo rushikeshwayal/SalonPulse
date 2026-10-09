@@ -1250,11 +1250,16 @@ def get_staff_users(db: Session = Depends(get_db), user: dict = Depends(require_
 
 @app.post("/api/demo/reset")
 def reset_demo(user: dict = Depends(require_owner), db: Session = Depends(get_db)):
-    for model in (AuditLog, CustomerRating, MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer):
+    if not DATABASE_URL.startswith("sqlite:"):
+        raise HTTPException(
+            status_code=403,
+            detail="Demo reset is disabled for the persistent production database to protect customer records.",
+        )
+    for model in (CustomerRating, MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer):
         db.query(model).delete(synchronize_session=False)
     db.commit()
     seed(db, reset=False)
-    return {"status": "ok", "message": "Demo activity reset"}
+    return {"status": "ok", "message": "Local demo activity reset; audit history was preserved."}
 
 
 @app.get("/api/bootstrap")
