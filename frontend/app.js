@@ -73,7 +73,9 @@ function setBarberView(view) {
   });
   const barberMode = authUser?.role === "barber";
   document.querySelectorAll("[data-barber-view]").forEach(section => {
-    section.hidden = barberMode && section.dataset.barberView !== view;
+    section.hidden = barberMode
+      ? section.dataset.barberView !== view
+      : section.hasAttribute("data-barber-only");
   });
 }
 function applyRoleUi(user) {
