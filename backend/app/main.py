@@ -677,6 +677,22 @@ def check_visit_access(visit: Visit, user: dict) -> None:
         raise HTTPException(status_code=403, detail="You can only access visits assigned to your barber account.")
 
 
+def latest_customer_visit_id(db: Session, customer_id: int) -> Optional[int]:
+    latest = db.query(Visit.id).filter(
+        Visit.customer_id == customer_id
+    ).order_by(Visit.completed_at.desc(), Visit.id.desc()).first()
+    return latest[0] if latest else None
+
+
+def check_latest_visit_editable(db: Session, visit: Visit) -> None:
+    latest_id = latest_customer_visit_id(db, visit.customer_id)
+    if latest_id != visit.id:
+        raise HTTPException(
+            status_code=409,
+            detail="This is an older customer visit and is read-only. Only the customer's latest visit can be edited.",
+        )
+
+
 def visible_customers_query(db: Session, user: dict):
     query = db.query(Customer)
     if user["role"] == "barber":
@@ -733,8 +749,27 @@ def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
     )
     if user["role"] == "barber":
         query = query.filter(Visit.barber_id == user["barber_id"])
-    rows = query.order_by(Visit.completed_at.desc()).limit(limit).all()
+    rows = query.order_by(Visit.completed_at.desc(), Visit.id.desc()).limit(limit).all()
     visit_ids = [v.id for v, *_ in rows]
+    # Sequence numbers and edit eligibility are calculated across the full customer history,
+    # not just the latest page of results or the currently signed-in barber's visible visits.
+    history_rows = db.query(Visit.id, Visit.customer_id).order_by(
+        Visit.completed_at.desc(), Visit.id.desc()
+    ).all()
+    customer_sequence: dict[int, dict[int, dict[str, int | bool]]] = {}
+    per_customer: dict[int, list[int]] = {}
+    for history_visit_id, customer_id in history_rows:
+        per_customer.setdefault(customer_id, []).append(history_visit_id)
+    for customer_id, ids in per_customer.items():
+        total = len(ids)
+        customer_sequence[customer_id] = {
+            history_visit_id: {
+                "visit_number": total - index,
+                "visit_count": total,
+                "is_latest_visit": index == 0,
+            }
+            for index, history_visit_id in enumerate(ids)
+        }
     service_map: dict[int, list[dict]] = {}
     if visit_ids:
         for line in db.query(VisitService).filter(VisitService.visit_id.in_(visit_ids)).order_by(VisitService.id).all():
@@ -751,7 +786,13 @@ def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
         "feedback_requested": v.feedback_requested, "feedback_received": f is not None,
         "rating": f.rating if f else None, "customer_rating": cr.rating if cr else None,
         "customer_rating_note": cr.note if cr else "",
-        "can_edit": user["role"] == "owner" or v.barber_id == user.get("barber_id"),
+        **customer_sequence.get(v.customer_id, {}).get(v.id, {
+            "visit_number": 1, "visit_count": 1, "is_latest_visit": True,
+        }),
+        "can_edit": (
+            customer_sequence.get(v.customer_id, {}).get(v.id, {}).get("is_latest_visit", False)
+            and (user["role"] == "owner" or v.barber_id == user.get("barber_id"))
+        ),
     } for v, c, b, barber, f, cr in rows]
 
 
@@ -980,6 +1021,7 @@ def update_visit(visit_id: int, payload: VisitUpdate, db: Session = Depends(get_
     if not visit:
         raise HTTPException(404, detail="Visit not found.")
     check_visit_access(visit, user)
+    check_latest_visit_editable(db, visit)
     before = visit_snapshot(db, visit)
     if payload.customer_id is not None:
         customer = db.get(Customer, payload.customer_id)
