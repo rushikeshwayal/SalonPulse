@@ -17,6 +17,7 @@ const normalizePhone = value => {
 let data = {};
 let authUser = null;
 let editingVisitId = null;
+let activeBarberView = "overview";
 let selectedCustomerCandidate = null;
 let confirmedCustomer = null;
 let customerSearchTimer = null;
@@ -63,6 +64,21 @@ function showPasswordChange() {
   $("#passwordChangeScreen").hidden = false;
   $("#passwordChangeError").hidden = true;
 }
+function setBarberView(view) {
+  activeBarberView = view;
+  document.querySelectorAll("[data-barber-tab]").forEach(button => {
+    const selected = button.dataset.barberTab === view;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-current", selected ? "page" : "false");
+  });
+  const barberMode = authUser?.role === "barber";
+  document.querySelectorAll("[data-barber-view]").forEach(section => {
+    section.hidden = barberMode && section.dataset.barberView !== view;
+  });
+  document.querySelectorAll("[data-barber-only]").forEach(section => {
+    section.hidden = !barberMode;
+  });
+}
 function applyRoleUi(user) {
   authUser = user;
   $("#loginScreen").hidden = true;
@@ -71,17 +87,22 @@ function applyRoleUi(user) {
   $("#currentUser").textContent = user.display_name || user.username;
   $("#currentRole").textContent = user.role === "owner" ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
   const owner = user.role === "owner";
+  document.body.classList.toggle("barber-mode", !owner);
   document.querySelectorAll("[data-owner-only]").forEach(el => { el.hidden = !owner; });
   $("#workspaceEyebrow").textContent = owner ? "OWNER OVERVIEW" : "BARBER WORKSPACE";
   $("#workspaceTitle").innerHTML = owner ? "Your business,<br>at a glance." : "Every visit.<br>Every detail.";
   $("#workspaceSubtitle").textContent = owner
     ? "Branch performance, employee results, revenue and guest recovery in one place."
     : "Your assigned visits, customer history and a clear record of every change.";
-  $("#visitListTitle").textContent = owner ? "Recent visits across all stores" : "Your recent visits";
+  $("#visitListTitle").textContent = owner ? "Recent visits across all stores" : "Your visits";
   $("#visitListSubtitle").textContent = owner
     ? "Edit a visit or inspect the full version history."
-    : "Only visits assigned to your barber account. Changes are versioned.";
+    : "Select a record to see the full details and its saved versions.";
+  setBarberView(owner ? "overview" : activeBarberView);
 }
+document.querySelectorAll("[data-barber-tab]").forEach(button => {
+  button.addEventListener("click", () => setBarberView(button.dataset.barberTab));
+});
 async function initAuth() {
   if (!sessionStorage.getItem("salonpulse_token")) {
     showLogin();
