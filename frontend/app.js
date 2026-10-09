@@ -492,6 +492,73 @@ async function openVisitHistory(id) {
     $("#historyContent").innerHTML = `<p class="form-error">${esc(err.message)}</p>`;
   }
 }
+let selectedVisitDetailId = null;
+function showSnapshot(snapshot) {
+  if (!snapshot) return '<p class="meta">No snapshot available for this version.</p>';
+  const lines = Array.isArray(snapshot.service_items) && snapshot.service_items.length
+    ? snapshot.service_items.map(line => `<div class="detail-line"><span>${esc(line.service_name)} × ${line.quantity}</span><span>${money(line.line_total)}</span></div>`).join("")
+    : `<div class="detail-line"><span>${esc(snapshot.service_name || "Service not specified")}</span><span>${money(snapshot.amount)}</span></div>`;
+  return `<div class="snapshot-summary">
+    <div class="detail-pair"><span>Customer</span><strong>${esc(snapshot.customer_name || "—")}</strong></div>
+    <div class="detail-pair"><span>Branch / barber</span><strong>${esc((snapshot.branch_name || "—").replace("The Gentlemen's Club — ",""))} · ${esc(snapshot.barber_name || "—")}</strong></div>
+    <div class="detail-pair"><span>Visit date</span><strong>${dateTime(snapshot.completed_at)}</strong></div>
+    <div class="detail-service-list">${lines}</div>
+    <div class="detail-total"><span>Total</span><strong>${money(snapshot.amount)}</strong></div>
+  </div>`;
+}
+async function openVisitDetails(id) {
+  const visit = data.visits.find(item => item.id === id);
+  if (!visit) return toast("This visit isn't in the loaded list. Refresh and try again.");
+  selectedVisitDetailId = id;
+  $("#visitDetailsTitle").textContent = "Visit #" + id;
+  $("#visitDetailsContent").innerHTML = '<p class="empty">Loading complete visit record…</p>';
+  $("#visitDetailsVersions").innerHTML = '<p class="empty">Loading saved versions…</p>';
+  $("#visitDetailsDialog").showModal();
+  const feedback = data.feedback.find(item => item.visit_id === id);
+  $("#visitDetailsContent").innerHTML = `
+    <div class="visit-detail-grid">
+      <section class="detail-card">
+        <p class="detail-overline">CUSTOMER</p><h3>${esc(visit.customer_name)}</h3>
+        <div class="detail-pair"><span>Phone</span><strong>${esc(visit.customer_phone || "Not provided")}</strong></div>
+        <div class="detail-pair"><span>Area</span><strong>${esc(visit.customer_location || "Not provided")}</strong></div>
+      </section>
+      <section class="detail-card">
+        <p class="detail-overline">VISIT</p><h3>${esc(visit.branch_name.replace("The Gentlemen's Club — ",""))}</h3>
+        <div class="detail-pair"><span>Barber</span><strong>${esc(visit.barber_name)}</strong></div>
+        <div class="detail-pair"><span>Completed</span><strong>${dateTime(visit.completed_at)}</strong></div>
+        <div class="detail-pair"><span>Record ID</span><strong>#${visit.id}</strong></div>
+      </section>
+    </div>
+    <section class="detail-card detail-services"><p class="detail-overline">SERVICES &amp; TOTAL</p>
+      ${showSnapshot(visit)}
+    </section>
+    <div class="visit-detail-grid">
+      <section class="detail-card"><p class="detail-overline">CUSTOMER FEEDBACK</p>
+        <h3>${visit.rating ? visit.rating + " / 5" : "Awaiting feedback"}</h3>
+        <p>${esc(feedback?.comment || "No written feedback recorded for this visit.")}</p>
+      </section>
+      ${authUser?.role === "barber" ? `<section class="detail-card"><p class="detail-overline">INTERACTION NOTE</p>
+        <h3>${visit.customer_rating ? visit.customer_rating + " / 5" : "Not rated"}</h3>
+        <p>${esc(visit.customer_rating_note || "No visit-specific interaction note yet.")}</p>
+        <button type="button" class="secondary" data-detail-rate="${visit.id}">${visit.customer_rating ? "Edit interaction note" : "Add interaction note"}</button>
+      </section>` : ""}
+    </div>`;
+  try {
+    const entries = await api("/api/visits/" + id + "/history");
+    $("#visitDetailsVersions").innerHTML = entries.length ? entries.map((entry, index) => `
+      <article class="version-card">
+        <div class="version-heading"><strong>Version ${entries.length - index} · ${esc(entry.action === "visit.create" ? "Record created" : "Record updated")}</strong><time class="meta">${dateTime(entry.created_at)}</time></div>
+        <p class="version-actor">By <strong>${esc(entry.actor_username)}</strong> · ${esc(entry.actor_role)}</p>
+        ${entry.change_note ? `<p class="version-note">${esc(entry.change_note)}</p>` : ""}
+        <div class="version-snapshots">
+          ${entry.before_data ? `<details><summary>Before this update</summary>${showSnapshot(entry.before_data)}<details class="raw-snapshot"><summary>Full saved fields</summary><pre>${esc(JSON.stringify(entry.before_data, null, 2))}</pre></details></details>` : '<p class="version-original">Original entry — no previous version.</p>'}
+          ${entry.after_data ? `<details><summary>Version contents</summary>${showSnapshot(entry.after_data)}<details class="raw-snapshot"><summary>Full saved fields</summary><pre>${esc(JSON.stringify(entry.after_data, null, 2))}</pre></details></details>` : ""}
+        </div>
+      </article>`).join("") : '<div class="empty">No audit versions were found for this record yet.</div>';
+  } catch (err) {
+    $("#visitDetailsVersions").innerHTML = `<p class="form-error">Couldn't load version history: ${esc(err.message)}</p>`;
+  }
+}
 function openCustomerRating(id) {
   const visit = data.visits.find(item => item.id === id);
   if (!visit) return toast("Visit not found. Refresh and try again.");
