@@ -116,10 +116,10 @@ function applyRoleUi(user) {
   $("#workspaceSubtitle").textContent = owner
     ? "Branch performance, employee results, revenue and guest recovery in one place."
     : "Your assigned visits, customer history and a clear record of every change.";
-  $("#visitListTitle").textContent = owner ? "Recent visits across all stores" : "Your visits";
+  $("#visitListTitle").textContent = owner ? "Customer visits across all stores" : "Customer visits";
   $("#visitListSubtitle").textContent = owner
-    ? "Edit a visit or inspect the full version history."
-    : "Select a record to see the full details and its saved versions.";
+    ? "Customers are grouped by name; newest visit appears first."
+    : "Each customer has a numbered timeline. Only the latest visit is editable.";
   setBarberView(owner ? "overview" : activeBarberView);
 }
 document.querySelectorAll("[data-barber-tab]").forEach(button => {
@@ -650,12 +650,14 @@ async function openVisitDetails(id) {
   const visit = data.visits.find(item => item.id === id);
   if (!visit) return toast("This visit isn't in the loaded list. Refresh and try again.");
   selectedVisitDetailId = id;
-  $("#visitDetailsTitle").textContent = "Visit #" + id;
+  $("#visitDetailsTitle").textContent = "Customer visit " + Number(visit.visit_number || id);
+  $("#editVisitFromDetails").hidden = !visit.can_edit;
   $("#visitDetailsContent").innerHTML = '<p class="empty">Loading complete visit record…</p>';
   $("#visitDetailsVersions").innerHTML = '<p class="empty">Loading saved versions…</p>';
   $("#visitDetailsDialog").showModal();
   const feedback = data.feedback.find(item => item.visit_id === id);
   $("#visitDetailsContent").innerHTML = `
+    ${visit.can_edit ? "" : '<p class="customer-visit-readonly-note detail-readonly-callout">This is an older customer visit. It is view-only; only the latest visit can be edited.</p>'}
     <div class="visit-detail-grid">
       <section class="detail-card">
         <p class="detail-overline">CUSTOMER</p><h3>${esc(visit.customer_name)}</h3>
@@ -818,6 +820,36 @@ $("#visits").addEventListener("click", async e => {
   if (detailsButton) return openVisitDetails(Number(detailsButton.dataset.openVisitButton));
   if (row) return openVisitDetails(Number(row.dataset.openVisit));
 });
+
+$("#visits").addEventListener("toggle", async e => {
+  const accordion = e.target;
+  if (!(accordion instanceof HTMLDetailsElement) || !accordion.matches("details[data-visit-accordion]") || !accordion.open) return;
+  if (accordion.dataset.historyLoaded === "true" || accordion.dataset.historyLoading === "true") return;
+  const visitId = Number(accordion.dataset.visitAccordion);
+  const target = accordion.querySelector("[data-visit-inline-history]");
+  if (!visitId || !target) return;
+  accordion.dataset.historyLoading = "true";
+  target.innerHTML = '<p class="empty">Loading version history…</p>';
+  try {
+    const entries = await api("/api/visits/" + visitId + "/history");
+    target.innerHTML = entries.length ? entries.map((entry, index) => `
+      <article class="customer-visit-version">
+        <div class="customer-visit-version-top">
+          <strong>Version ${entries.length - index} · ${entry.action === "visit.create" ? "Visit created" : "Visit updated"}</strong>
+          <time>${dateTime(entry.created_at)}</time>
+        </div>
+        <p>Changed by <strong>${esc(entry.actor_username)}</strong> · ${esc(entry.actor_role)}</p>
+        ${entry.change_note ? `<div class="customer-visit-change-note">${esc(entry.change_note)}</div>` : ""}
+        ${entry.before_data ? `<details class="customer-visit-version-data"><summary>Before this change</summary>${showSnapshot(entry.before_data, false)}<details class="customer-visit-raw-data"><summary>View saved fields</summary><pre>${esc(JSON.stringify(entry.before_data, null, 2))}</pre></details></details>` : '<p class="customer-visit-original">Original version — no previous record.</p>'}
+        ${entry.after_data ? `<details class="customer-visit-version-data"><summary>Saved version</summary>${showSnapshot(entry.after_data, false)}<details class="customer-visit-raw-data"><summary>View saved fields</summary><pre>${esc(JSON.stringify(entry.after_data, null, 2))}</pre></details></details>` : ""}
+      </article>`).join("") : '<p class="empty">No audit history is available for this visit.</p>';
+    accordion.dataset.historyLoaded = "true";
+  } catch (err) {
+    target.innerHTML = `<p class="form-error">Couldn't load versions: ${esc(err.message)}</p>`;
+  } finally {
+    delete accordion.dataset.historyLoading;
+  }
+}, true);
 $("#visits").addEventListener("keydown", e => {
   const row = e.target.closest("[data-open-visit]");
   if (!row || e.target.closest("button") || !["Enter", " "].includes(e.key)) return;
