@@ -696,9 +696,11 @@ def check_latest_visit_editable(db: Session, visit: Visit) -> None:
 def visible_customers_query(db: Session, user: dict):
     query = db.query(Customer)
     if user["role"] == "barber":
-        branch_id = branch_id_for_user(db, user)
-        visit_customer_ids = db.query(Visit.customer_id).filter(Visit.branch_id == branch_id).distinct()
-        query = query.filter(or_(Customer.id.in_(visit_customer_ids), Customer.created_by_user_id == user["id"]))
+        # A barber's customer directory is limited to people they personally served.
+        visit_customer_ids = db.query(Visit.customer_id).filter(
+            Visit.barber_id == user["barber_id"]
+        ).distinct()
+        query = query.filter(Customer.id.in_(visit_customer_ids))
     return query
 
 
@@ -708,7 +710,7 @@ def customer_rows(db: Session, user: dict) -> list[dict]:
         func.max(Visit.completed_at).label("last_visit"),
     )
     if user["role"] == "barber":
-        visits_query = visits_query.filter(Visit.branch_id == branch_id_for_user(db, user))
+        visits_query = visits_query.filter(Visit.barber_id == user["barber_id"])
     stats = visits_query.group_by(Visit.customer_id).all()
     stats_map = {row.customer_id: row for row in stats}
     result = []
@@ -784,7 +786,9 @@ def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
         "service_name": v.service_name, "service_items": service_map.get(v.id, []),
         "amount": v.amount, "completed_at": utc_iso(v.completed_at),
         "feedback_requested": v.feedback_requested, "feedback_received": f is not None,
-        "rating": f.rating if f else None, "customer_rating": cr.rating if cr else None,
+        "rating": f.rating if f else None, "feedback_comment": f.comment if f else None,
+        "feedback_created_at": utc_iso(f.created_at) if f else None,
+        "customer_rating": cr.rating if cr else None,
         "customer_rating_note": cr.note if cr else "",
         **customer_sequence.get(v.customer_id, {}).get(v.id, {
             "visit_number": 1, "visit_count": 1, "is_latest_visit": True,
@@ -985,6 +989,57 @@ def search_customers(q: str = Query(min_length=1, max_length=120), db: Session =
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
     return customer_rows(db, user)
+
+
+@app.get("/api/customers/{customer_id}/reviews")
+def get_customer_review_history(customer_id: int, db: Session = Depends(get_db),
+                                user: dict = Depends(get_current_user)):
+    customer = db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found.")
+
+    query = db.query(Visit, Branch, Barber, Feedback).join(
+        Branch, Branch.id == Visit.branch_id
+    ).join(Barber, Barber.id == Visit.barber_id).outerjoin(
+        Feedback, Feedback.visit_id == Visit.id
+    ).filter(Visit.customer_id == customer_id)
+    if user["role"] == "barber":
+        query = query.filter(Visit.barber_id == user["barber_id"])
+    rows = query.order_by(Visit.completed_at.desc(), Visit.id.desc()).all()
+    # Do not reveal a customer record to a barber unless they have served that customer.
+    if user["role"] == "barber" and not rows:
+        raise HTTPException(status_code=404, detail="Customer not found in your visit history.")
+
+    visit_count = len(rows)
+    reviews = []
+    for index, (visit, branch, barber, feedback) in enumerate(rows):
+        if not feedback:
+            continue
+        reviews.append({
+            "id": feedback.id,
+            "visit_id": visit.id,
+            "visit_number": visit_count - index,
+            "completed_at": utc_iso(visit.completed_at),
+            "service_name": visit.service_name,
+            "amount": visit.amount,
+            "branch_name": branch.name,
+            "barber_name": barber.name,
+            "rating": feedback.rating,
+            "comment": feedback.comment or "",
+            "created_at": utc_iso(feedback.created_at),
+        })
+
+    return {
+        "customer": {
+            "id": customer.id,
+            "name": customer.name,
+            "phone": customer.phone or "",
+            "location": customer.location or "",
+        },
+        "visit_count": visit_count,
+        "review_count": len(reviews),
+        "reviews": reviews,
+    }
 
 
 @app.get("/api/dashboard")
