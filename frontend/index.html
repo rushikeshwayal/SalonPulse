@@ -41,7 +41,11 @@
 <div id="appShell" hidden>
 <header>
   <div class="brand-lockup"><span class="logo">S</span><span><b>SalonPulse</b><small>Customer experience workspace</small></span></div>
-  <div class="session-actions"><div><strong id="currentUser"></strong><small id="currentRole"></small></div><button id="logout" class="secondary">Sign out</button></div>
+  <button id="profileButton" class="profile-trigger" type="button" aria-label="Open account details" aria-haspopup="dialog" aria-controls="profileDialog">
+    <span class="profile-trigger-avatar" id="profileInitials">U</span>
+    <span class="profile-trigger-copy"><strong id="currentUser">Account</strong><small id="currentRole">WORKSPACE</small></span>
+    <svg class="profile-trigger-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+  </button>
 </header>
 <main>
   <section class="hero" id="workspaceHero" data-barber-view="overview">
@@ -78,6 +82,33 @@
   <p class="foot">Prototype only · Fictional seed data · No real WhatsApp delivery · API docs: <a href="/docs">/docs</a></p>
 </main>
 </div>
+<dialog id="profileDialog" class="profile-dialog" aria-labelledby="profileDialogTitle">
+  <div class="profile-dialog-heading">
+    <div><p class="eyebrow">YOUR ACCOUNT</p><h2 id="profileDialogTitle">Profile details</h2></div>
+    <button type="button" class="icon-close close" aria-label="Close account details">×</button>
+  </div>
+  <div class="profile-identity">
+    <div class="profile-avatar" id="profileAvatar">U</div>
+    <div class="profile-identity-copy">
+      <h3 id="profileDisplayName">Signed-in user</h3>
+      <p id="profileEmailHeadline">—</p>
+      <span id="profileRoleBadge" class="profile-role-badge">WORKSPACE</span>
+    </div>
+  </div>
+  <div class="profile-details">
+    <div class="profile-detail-row"><span>Email address</span><strong id="profileEmail">—</strong></div>
+    <div class="profile-detail-row"><span>Username</span><strong id="profileUsername">—</strong></div>
+    <div class="profile-detail-row"><span>Workspace</span><strong id="profileWorkspace">—</strong></div>
+    <div class="profile-detail-row" id="profileBranchRow"><span>Assigned branch</span><strong id="profileBranch">—</strong></div>
+  </div>
+  <div class="profile-dialog-actions">
+    <button type="button" id="profileSignOut" class="profile-signout">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3.5H4.5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1H8M11.5 6.5l4 3.5-4 3.5M15.5 10H7"/></svg>
+      Sign out
+    </button>
+    <button type="button" class="secondary close">Done</button>
+  </div>
+</dialog>
 <dialog id="visitDialog" class="visit-dialog">
   <form id="visitForm">
     <div class="dialog-heading"><div><p class="eyebrow">CLIENT CHECK-IN</p><h2>Start a better visit</h2><p class="muted">Recognize your client, capture the service, keep the relationship going.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
