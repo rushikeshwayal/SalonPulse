@@ -1217,12 +1217,12 @@ def create_visit(payload: VisitCreate, db: Session = Depends(get_db), user: dict
 
 @app.get("/api/feedback")
 def get_feedback(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db),
-                 user: dict = Depends(get_current_user)):
+                 user: dict = Depends(require_owner)):
     return feedback_rows(db, user, limit)
 
 
 @app.post("/api/feedback", status_code=201)
-def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+def submit_feedback(payload: FeedbackCreate, db: Session = Depends(get_db), user: dict = Depends(require_owner)):
     visit = db.get(Visit, payload.visit_id)
     if not visit:
         raise HTTPException(404, detail="Visit not found.")
@@ -1422,7 +1422,8 @@ def bootstrap(db: Session = Depends(get_db), user: dict = Depends(get_current_us
         "user": user, "dashboard": dashboard_data(db, user),
         "branches": branch_rows(db, user), "barbers": barber_rows(db, user),
         "customers": customer_rows(db, user), "visits": visit_rows(db, user, 20),
-        "feedback": feedback_rows(db, user, 20), "tasks": task_rows(db, user, 20),
+        "feedback": feedback_rows(db, user, 20) if user["role"] == "owner" else [],
+        "tasks": task_rows(db, user, 20) if user["role"] == "owner" else [],
         "insights": insight_data(db, user),
         "messages": message_rows(db, user, 10) if user["role"] == "owner" else [],
         "serviceCatalog": SERVICE_CATALOG,
