@@ -725,10 +725,10 @@ async function openVisitDetails(id) {
       ${showSnapshot(visit, false)}
     </section>
     <div class="visit-detail-grid">
-      <section class="detail-card"><p class="detail-overline">CUSTOMER FEEDBACK</p>
-        <h3>${visit.rating ? visit.rating + " / 5" : "Awaiting feedback"}</h3>
-        <p>${esc(feedback?.comment || "No written feedback recorded for this visit.")}</p>
-      </section>
+      ${visit.feedback_received ? `<section class="detail-card"><p class="detail-overline">CUSTOMER FEEDBACK</p>
+        <h3>${visit.rating} / 5</h3>
+        ${(visit.feedback_comment ?? feedback?.comment ?? "").trim() ? `<p>${esc(visit.feedback_comment ?? feedback.comment)}</p>` : ""}
+      </section>` : ""}
       ${authUser?.role === "barber" ? `<section class="detail-card"><p class="detail-overline">INTERACTION NOTE</p>
         <h3>${visit.customer_rating ? visit.customer_rating + " / 5" : "Not rated"}</h3>
         <p>${esc(visit.customer_rating_note || "No visit-specific interaction note yet.")}</p>
