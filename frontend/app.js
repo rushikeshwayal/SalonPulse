@@ -495,15 +495,15 @@ async function openVisitHistory(id) {
   }
 }
 let selectedVisitDetailId = null;
-function showSnapshot(snapshot) {
+function showSnapshot(snapshot, includeVisitDetails = true) {
   if (!snapshot) return '<p class="meta">No snapshot available for this version.</p>';
   const lines = Array.isArray(snapshot.service_items) && snapshot.service_items.length
     ? snapshot.service_items.map(line => `<div class="detail-line"><span>${esc(line.service_name)} × ${line.quantity}</span><span>${money(line.line_total)}</span></div>`).join("")
     : `<div class="detail-line"><span>${esc(snapshot.service_name || "Service not specified")}</span><span>${money(snapshot.amount)}</span></div>`;
   return `<div class="snapshot-summary">
-    <div class="detail-pair"><span>Customer</span><strong>${esc(snapshot.customer_name || "—")}</strong></div>
+    ${includeVisitDetails ? `<div class="detail-pair"><span>Customer</span><strong>${esc(snapshot.customer_name || "—")}</strong></div>
     <div class="detail-pair"><span>Branch / barber</span><strong>${esc((snapshot.branch_name || "—").replace("The Gentlemen's Club — ",""))} · ${esc(snapshot.barber_name || "—")}</strong></div>
-    <div class="detail-pair"><span>Visit date</span><strong>${dateTime(snapshot.completed_at)}</strong></div>
+    <div class="detail-pair"><span>Visit date</span><strong>${dateTime(snapshot.completed_at)}</strong></div>` : ""}
     <div class="detail-service-list">${lines}</div>
     <div class="detail-total"><span>Total</span><strong>${money(snapshot.amount)}</strong></div>
   </div>`;
@@ -532,7 +532,7 @@ async function openVisitDetails(id) {
       </section>
     </div>
     <section class="detail-card detail-services"><p class="detail-overline">SERVICES &amp; TOTAL</p>
-      ${showSnapshot(visit)}
+      ${showSnapshot(visit, false)}
     </section>
     <div class="visit-detail-grid">
       <section class="detail-card"><p class="detail-overline">CUSTOMER FEEDBACK</p>
