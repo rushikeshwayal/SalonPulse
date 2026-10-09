@@ -26,18 +26,60 @@ let customerSearchTimer = null;
 let customerSearchSequence = 0;
 let lastCustomerSearchMatches = [];
 
+let apiRole = null;
+
+function panelApiPath(path) {
+  const role = apiRole || authUser?.role;
+  if (!role || !["owner", "barber"].includes(role) || !path.startsWith("/api/")) return path;
+  if (path.startsWith("/api/auth/") || path === "/api/health") return path;
+
+  const queryIndex = path.indexOf("?");
+  const pathname = queryIndex < 0 ? path : path.slice(0, queryIndex);
+  const query = queryIndex < 0 ? "" : path.slice(queryIndex);
+  const root = "/api/" + role;
+  let mapped = null;
+
+  if (pathname === "/api/bootstrap") mapped = root + "/bootstrap";
+  else if (pathname === "/api/dashboard") mapped = root + "/home";
+  else if (pathname === "/api/branches") mapped = root + "/catalog/branches";
+  else if (pathname === "/api/barbers") mapped = root + "/catalog/barbers";
+  else if (pathname === "/api/service-catalog") mapped = root + "/catalog/services";
+  else if (pathname === "/api/customers") mapped = root + "/customers";
+  else if (pathname === "/api/customers/search") mapped = root + "/customers/search";
+  else if ((mapped = pathname.match(/^\/api\/customers\/(\d+)\/reviews$/))) mapped = root + "/customers/" + mapped[1] + "/reviews";
+  else if (pathname === "/api/visits") mapped = root + "/visits";
+  else if (pathname === "/api/visits") mapped = root + "/visits";
+  else if ((mapped = pathname.match(/^\/api\/visits\/(\d+)\/history$/))) mapped = root + "/visits/" + mapped[1] + "/history";
+  else if ((mapped = pathname.match(/^\/api\/visits\/(\d+)$/))) mapped = root + "/visits/" + mapped[1];
+  else if (pathname === "/api/notifications" && role === "barber") mapped = "/api/barber/notifications";
+  else if (pathname === "/api/customer-ratings") mapped = root + "/customer-ratings";
+  else if (role === "owner" && pathname === "/api/feedback") mapped = "/api/owner/feedback";
+  else if (role === "owner" && pathname === "/api/recovery-tasks") mapped = "/api/owner/recovery-tasks";
+  else if (role === "owner" && (mapped = pathname.match(/^\/api\/recovery-tasks\/(\d+)$/))) mapped = "/api/owner/recovery-tasks/" + mapped[1];
+  else if (role === "owner" && pathname === "/api/insights") mapped = "/api/owner/insights";
+  else if (role === "owner" && pathname === "/api/messages") mapped = "/api/owner/messages";
+  else if (role === "owner" && pathname === "/api/audit-logs") mapped = "/api/owner/audit-logs";
+  else if (role === "owner" && pathname === "/api/staff-users") mapped = "/api/owner/staff-users";
+  else if (role === "owner" && pathname === "/api/demo/reset") mapped = "/api/owner/demo/reset";
+  if (!mapped || typeof mapped !== "string") return path;
+  return mapped + query;
+}
+
 async function api(path, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (opts.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const token = sessionStorage.getItem("salonpulse_token");
-  if (token && path !== "/api/auth/login") headers.set("Authorization", "Bearer " + token);
-  const response = await fetch(path, {...opts, headers});
+  const requestPath = path;
+  const resolvedPath = panelApiPath(path);
+  if (token && requestPath !== "/api/auth/login") headers.set("Authorization", "Bearer " + token);
+  const response = await fetch(resolvedPath, {...opts, headers});
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(result.detail || "Request failed (" + response.status + ")");
     error.status = response.status;
-    if (response.status === 401 && path !== "/api/auth/login") {
+    if (response.status === 401 && requestPath !== "/api/auth/login") {
       sessionStorage.removeItem("salonpulse_token");
+      apiRole = null;
       showLogin();
     }
     throw error;
@@ -53,6 +95,7 @@ function toast(s) {
 
 function showLogin(message = "") {
   authUser = null;
+  apiRole = null;
   $("#appShell").hidden = true;
   $("#loginScreen").hidden = false;
   $("#passwordChangeScreen").hidden = true;
@@ -150,6 +193,7 @@ async function initAuth() {
   }
   try {
     const user = await api("/api/auth/me");
+    apiRole = user.role;
     if (user.must_change_password) {
       showPasswordChange();
       return;
@@ -176,6 +220,7 @@ $("#loginForm").onsubmit = async e => {
       })
     });
     sessionStorage.setItem("salonpulse_token", result.access_token);
+    apiRole = result.user.role;
     if (result.user.must_change_password) showPasswordChange();
     else await load();
   } catch (err) {
@@ -222,6 +267,7 @@ $("#passwordChangeForm").onsubmit = async e => {
 };
 function signOut() {
   sessionStorage.removeItem("salonpulse_token");
+  apiRole = null;
   $("#loginForm").reset();
   $("#passwordChangeForm").reset();
   showLogin();
@@ -246,6 +292,7 @@ async function load() {
     const payload = await api("/api/bootstrap");
     data = payload;
     authUser = payload.user;
+    apiRole = payload.user.role;
     applyRoleUi(authUser);
     render();
     populate();

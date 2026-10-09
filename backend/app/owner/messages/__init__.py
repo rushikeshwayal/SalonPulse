@@ -1,0 +1,1 @@
+"""Owner mock message activity."""

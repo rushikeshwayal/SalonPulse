@@ -358,3 +358,35 @@ def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
 
         hidden_history = client.get(f"/api/customers/{hidden_customer_id}/reviews")
         assert hidden_history.status_code == 404
+
+
+def test_owner_and_barber_apis_are_grouped_and_role_protected():
+    schema = app.openapi()
+    paths = schema["paths"]
+    assert "/api/owner/home" in paths
+    assert "/api/owner/finance" in paths
+    assert "/api/owner/visits" in paths
+    assert "/api/barber/home" in paths
+    assert "/api/barber/visits" in paths
+    assert "/api/barber/notifications" in paths
+    # Old compatibility routes stay functional for existing callers, but are not
+    # duplicated in Swagger/OpenAPI.
+    assert "/api/visits" not in paths
+    assert "/api/bootstrap" not in paths
+    owner_tags = paths["/api/owner/home"]["get"]["tags"]
+    barber_tags = paths["/api/barber/home"]["get"]["tags"]
+    assert owner_tags == ["Owner / Home"]
+    assert barber_tags == ["Barber / Home"]
+
+    with TestClient(app) as client:
+        login_as(client, "owner")
+        assert client.get("/api/owner/home").status_code == 200
+        assert client.get("/api/owner/finance").status_code == 200
+        assert client.get("/api/barber/home").status_code == 403
+        assert client.get("/api/barber/visits").status_code == 403
+
+        login_as(client, "aarav")
+        assert client.get("/api/barber/home").status_code == 200
+        assert client.get("/api/barber/visits").status_code == 200
+        assert client.get("/api/owner/home").status_code == 403
+        assert client.get("/api/owner/finance").status_code == 403

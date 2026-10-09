@@ -1,0 +1,1 @@
+"""Barber reference data."""
