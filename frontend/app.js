@@ -261,6 +261,96 @@ async function load() {
     if (e.status !== 401) toast("Couldn't load workspace: " + e.message);
   }
 }
+function renderCustomerVisits() {
+  const visibleVisits = [...(data.visits || [])].sort((a, b) => {
+    const difference = new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
+    return difference || Number(b.id) - Number(a.id);
+  });
+  if (!visibleVisits.length) {
+    return '<div class="empty">No customer visits yet. Start recording a visit to build a customer timeline.</div>';
+  }
+  const grouped = new Map();
+  visibleVisits.forEach(visit => {
+    const key = String(visit.customer_id ?? ("unknown-" + visit.customer_name));
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(visit);
+  });
+  const customers = [...grouped.entries()].map(([key, visits]) => ({key, visits})).sort((a, b) => {
+    const difference = new Date(b.visits[0].completed_at).getTime() - new Date(a.visits[0].completed_at).getTime();
+    return difference || String(a.visits[0].customer_name).localeCompare(String(b.visits[0].customer_name));
+  });
+  const isBarber = authUser?.role === "barber";
+  return `<div class="customer-visit-intro">
+      <span class="customer-visit-intro-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 7h4M18 5v4"/></svg></span>
+      <span><strong>Customer visits</strong><small>Each customer has a timeline. Open a visit to see its details and saved versions.</small></span>
+    </div>
+    <div class="customer-visit-directory">${customers.map(({key, visits}) => {
+      const customer = visits[0];
+      const totalVisits = Math.max(...visits.map(v => Number(v.visit_count || 0)), visits.length);
+      return `<section class="customer-visit-group" data-customer-visit-group="${esc(key)}">
+        <div class="customer-visit-group-heading">
+          <span class="customer-avatar">${esc((customer.customer_name || "?").slice(0, 1).toUpperCase())}</span>
+          <span class="customer-visit-group-main"><strong>${esc(customer.customer_name)}</strong><small>${esc(customer.customer_phone || "Phone not added")}${customer.customer_location ? " · " + esc(customer.customer_location) : ""}</small></span>
+          <span class="customer-visit-count">${totalVisits} ${totalVisits === 1 ? "visit" : "visits"}</span>
+        </div>
+        <div class="customer-visit-list">${visits.map((visit, index) => {
+          const number = Number(visit.visit_number || (visits.length - index));
+          const isLatest = typeof visit.is_latest_visit === "boolean" ? visit.is_latest_visit : index === 0;
+          const canEdit = isLatest && Boolean(visit.can_edit);
+          const feedback = (data.feedback || []).find(item => item.visit_id === visit.id);
+          const serviceLines = visit.service_items?.length ? visit.service_items.map(line =>
+            `<div class="customer-visit-service-line"><span>${esc(line.service_name)}${Number(line.quantity) > 1 ? " × " + line.quantity : ""}<small>${money(line.unit_price)} each</small></span><strong>${money(line.line_total)}</strong></div>`
+          ).join("") : `<div class="customer-visit-service-line"><span>${esc(visit.service_name || "Service not specified")}</span><strong>${money(visit.amount)}</strong></div>`;
+          return `<details class="customer-visit-accordion" data-visit-accordion="${visit.id}" data-history-loaded="false">
+            <summary class="customer-visit-summary">
+              <span class="visit-number-badge">Visit ${number}</span>
+              <span class="customer-visit-summary-main"><strong>${dateTime(visit.completed_at)}</strong><small>${esc(visit.service_name || "Service not specified")} · ${money(visit.amount)}</small></span>
+              ${isLatest ? '<span class="latest-visit-badge">Latest visit</span>' : '<span class="older-visit-badge">Read only</span>'}
+              <svg class="customer-visit-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+            </summary>
+            <div class="customer-visit-expanded">
+              <div class="customer-visit-detail-grid">
+                <section class="customer-visit-detail-card">
+                  <span class="customer-visit-label">Customer</span>
+                  <strong>${esc(visit.customer_name)}</strong>
+                  <div class="customer-visit-detail-row"><span>Phone</span><span>${esc(visit.customer_phone || "Not provided")}</span></div>
+                  <div class="customer-visit-detail-row"><span>Area</span><span>${esc(visit.customer_location || "Not provided")}</span></div>
+                  <div class="customer-visit-detail-row"><span>Visit date</span><span>${dateTime(visit.completed_at)}</span></div>
+                </section>
+                <section class="customer-visit-detail-card">
+                  <span class="customer-visit-label">Visit details</span>
+                  <strong>${esc(visit.branch_name.replace("The Gentlemen's Club — ", ""))}</strong>
+                  <div class="customer-visit-detail-row"><span>Barber</span><span>${esc(visit.barber_name)}</span></div>
+                  <div class="customer-visit-detail-row"><span>Record ID</span><span>#${visit.id}</span></div>
+                  <div class="customer-visit-detail-row"><span>Feedback</span><span>${visit.rating ? visit.rating + " / 5" : "Awaiting"}</span></div>
+                  ${visit.customer_rating ? `<div class="customer-visit-detail-row"><span>Interaction note</span><span>${visit.customer_rating} / 5 · ${esc(visit.customer_rating_note || "No note")}</span></div>` : ""}
+                </section>
+              </div>
+              <section class="customer-visit-detail-card customer-visit-services">
+                <div class="customer-visit-services-heading"><span class="customer-visit-label">Services provided</span><span class="customer-visit-service-count">${visit.service_items?.length || 1} line${(visit.service_items?.length || 1) === 1 ? "" : "s"}</span></div>
+                ${serviceLines}
+                <div class="customer-visit-total"><span>Total paid</span><strong>${money(visit.amount)}</strong></div>
+              </section>
+              <section class="customer-visit-detail-card customer-visit-feedback">
+                <span class="customer-visit-label">Customer feedback</span>
+                <strong>${visit.rating ? visit.rating + " / 5" : "No feedback submitted"}</strong>
+                <p>${esc(feedback?.comment || "No written feedback was recorded for this visit.")}</p>
+              </section>
+              <div class="customer-visit-actions">
+                ${canEdit ? `<button type="button" class="primary" data-edit-visit="${visit.id}">Edit latest visit</button>` : `<span class="customer-visit-readonly-note"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="8.5" width="11" height="8" rx="2"/><path d="M7 8.5V6a3 3 0 0 1 6 0v2.5"/></svg>Older visits are locked to preserve history.</span>`}
+                ${isBarber && isLatest ? `<button type="button" class="secondary" data-rate-visit="${visit.id}">${visit.customer_rating ? "Edit interaction note" : "Rate interaction"}</button>` : ""}
+              </div>
+              <section class="customer-visit-history">
+                <div class="customer-visit-history-heading"><span><strong>Version &amp; audit history</strong><small>Changes are listed newest first.</small></span><span class="history-lock"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="8.5" width="11" height="8" rx="2"/><path d="M7 8.5V6a3 3 0 0 1 6 0v2.5"/></svg>Saved log</span></div>
+                <div class="customer-visit-inline-history" data-visit-inline-history="${visit.id}"><p class="empty">Open this visit to load its saved versions.</p></div>
+              </section>
+            </div>
+          </details>`;
+        }).join("")}</div>
+      </section>`;
+    }).join("")}</div>`;
+}
+
 function render() {
   const d = data.dashboard;
   const isBarber = authUser?.role === "barber";
@@ -304,17 +394,7 @@ function render() {
       <div class="meta">${esc(b.branch_name.replace("The Gentlemen's Club — ",""))} · ${b.visits} visits · ${b.feedback_count} feedback responses · rating ${b.average_rating ?? "—"}</div>
     </div>`).join("") || '<div class="empty">No employee performance data yet.</div>';
 
-  $("#visits").innerHTML = data.visits.length ? `<div class="visit-list-hint">Select any row to open the complete record and saved versions.</div><div class="table-wrap"><table class="table visit-table"><thead><tr>
-    <th>CUSTOMER</th><th>VISIT DATE</th><th>SERVICE</th><th>TOTAL</th><th>FEEDBACK</th><th>ACTIONS</th>
-    </tr></thead><tbody>${data.visits.slice(0,100).map(v => `
-      <tr class="visit-row" data-open-visit="${v.id}" tabindex="0" role="button" aria-label="Open visit record ${v.id} for ${esc(v.customer_name)}">
-        <td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">Record #${v.id}</span></td>
-        <td>${dateTime(v.completed_at)}<br><span class="meta">${esc(v.branch_name.replace("The Gentlemen's Club — ",""))} · ${esc(v.barber_name)}</span></td>
-        <td>${esc(v.service_name)}</td><td><strong>${money(v.amount)}</strong></td>
-        <td>${v.rating ? v.rating + "/5 customer feedback" : "Awaiting"}${v.customer_rating ? `<br><span class="meta">Interaction ${v.customer_rating}/5</span>` : ""}</td>
-        <td class="visit-actions"><button class="secondary" type="button" data-open-visit-button="${v.id}">Details</button><button class="secondary" type="button" data-edit-visit="${v.id}">Edit</button>
-          ${isBarber ? `<button class="secondary" type="button" data-rate-visit="${v.id}">${v.customer_rating ? "Edit note" : "Rate interaction"}</button>` : ""}</td>
-      </tr>`).join("")}</tbody></table></div>` : '<div class="empty">No visit entries yet. Start a check-in to create your first record.</div>';
+  $("#visits").innerHTML = renderCustomerVisits();
 
   $("#barberCustomers").innerHTML = data.customers.length ? `<div class="customer-directory">${data.customers.map(customer => {
     const lastVisit = data.visits.find(visit => visit.customer_id === customer.id);
