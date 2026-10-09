@@ -1160,9 +1160,12 @@ def create_visit(payload: VisitCreate, db: Session = Depends(get_db), user: dict
         if not customer:
             raise HTTPException(404, detail="Customer not found. Search again and select a customer.")
         if user["role"] == "barber":
-            ids = {x[0] for x in db.query(Visit.customer_id).filter(Visit.branch_id == branch_id).distinct().all()}
+            # Returning-customer lookup is private to visits assigned to the signed-in barber.
+            ids = {x[0] for x in db.query(Visit.customer_id).filter(
+                Visit.barber_id == user["barber_id"]
+            ).distinct().all()}
             if customer.id not in ids:
-                raise HTTPException(403, detail="Customer is not in your branch's records.")
+                raise HTTPException(403, detail="You can only select customers from your own visit history.")
     else:
         name, phone, location = (payload.customer_name or "").strip(), (payload.customer_phone or "").strip(), (payload.customer_location or "").strip()
         normalized_phone = normalize_phone(phone)
