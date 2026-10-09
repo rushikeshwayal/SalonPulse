@@ -91,11 +91,13 @@ function applyRoleUi(user) {
   $("#passwordChangeScreen").hidden = true;
   $("#appShell").hidden = false;
   const displayName = user.display_name || user.username || user.email || "SalonPulse user";
-  const initials = displayName.trim().split(/\\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "U";
+  const initials = displayName.trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "U";
   const owner = user.role === "owner";
   $("#currentUser").textContent = displayName;
   $("#currentRole").textContent = owner ? "OWNER WORKSPACE" : "BARBER WORKSPACE";
+  $("#profileButton").setAttribute("aria-label", "Open account details for " + displayName);
   $("#profileAvatar").textContent = initials;
+  $("#profileRoleBadge").textContent = owner ? "OWNER ACCOUNT" : "BARBER ACCOUNT";
   $("#profileDisplayName").textContent = displayName;
   $("#profileEmailHeadline").textContent = user.email || "Email not provided";
   $("#profileEmail").textContent = user.email || "Not provided";
@@ -228,7 +230,14 @@ function signOut() {
   showLogin();
 }
 $("#profileButton").addEventListener("click", () => {
-  if (!$("#profileDialog").open) $("#profileDialog").showModal();
+  const dialog = $("#profileDialog");
+  if (!dialog.open) {
+    $("#profileButton").setAttribute("aria-expanded", "true");
+    dialog.showModal();
+  }
+});
+$("#profileDialog").addEventListener("close", () => {
+  $("#profileButton").setAttribute("aria-expanded", "false");
 });
 $("#profileSignOut").addEventListener("click", () => {
   $("#profileDialog").close();
