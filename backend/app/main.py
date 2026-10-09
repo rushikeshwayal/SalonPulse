@@ -1324,7 +1324,7 @@ def get_notifications(limit: int = Query(default=50, ge=1, le=100),
         })
     return {
         "notifications": notifications,
-        "unread_count": len(notifications),
+        "count": len(notifications),
     }
 
 
