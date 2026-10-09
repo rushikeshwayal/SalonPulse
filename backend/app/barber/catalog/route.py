@@ -3,10 +3,10 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ...database import get_db
-from ...dependencies import get_current_user, require_owner
+from ...dependencies import get_current_user, require_barber
 from .services import list_barbers, list_branches, list_services
 
-router = APIRouter(prefix="/api/barber/catalog", tags=["Barber / Reference Data"], dependencies=[Depends(require_owner)])
+router = APIRouter(prefix="/api/barber/catalog", tags=["Barber / Reference Data"], dependencies=[Depends(require_barber)])
 
 @router.get("/branches", summary="List branches")
 def branches(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):

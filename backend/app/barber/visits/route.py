@@ -3,11 +3,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ...database import get_db
-from ...dependencies import get_current_user, require_owner
+from ...dependencies import get_current_user, require_barber
 from ...schemas import VisitCreate, VisitUpdate
 from .services import create, history, list_visits, update
 
-router = APIRouter(prefix="/api/barber/visits", tags=["Barber / Visits"], dependencies=[Depends(require_owner)])
+router = APIRouter(prefix="/api/barber/visits", tags=["Barber / Visits"], dependencies=[Depends(require_barber)])
 
 @router.get("", summary="List visits assigned to this barber")
 def visits(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
