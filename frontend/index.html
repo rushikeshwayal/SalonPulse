@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SalonPulse Demo</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <div><span class="logo">S</span><span><b>SalonPulse</b><small>Customer experience for salon groups</small></span></div>
+  <span class="pill">DEMO · WHATSAPP MOCK MODE</span>
+</header>
+<main>
+  <section class="hero">
+    <div><p class="eyebrow">MULTI-BRANCH SALON DEMO</p><h1>Hear what customers<br>don't always say.</h1><p class="muted">Private feedback, service recovery, and branch-level insights in one place.</p></div>
+    <button id="newVisit" class="primary">＋ Create demo visit</button>
+  </section>
+  <section class="stats" id="stats"></section>
+  <section class="grid">
+    <article class="panel"><div class="panel-title"><div><h2>Private feedback inbox</h2><p>Visible to authorized management in this demo.</p></div><button id="newFeedback" class="secondary">＋ Record feedback</button></div><div id="feedback"></div></article>
+    <article class="panel"><div class="panel-title"><div><h2>Service recovery</h2><p>Track issues until they're resolved.</p></div></div><div id="tasks"></div></article>
+  </section>
+  <section class="grid">
+    <article class="panel"><div class="panel-title"><div><h2>Branch insights</h2><p>Descriptive demo data, not proof of causation.</p></div></div><div id="branches"></div></article>
+    <article class="panel"><div class="panel-title"><div><h2>Recent visits</h2><p>Service and feedback history.</p></div></div><div id="visits"></div></article>
+  </section>
+  <section class="panel"><div class="panel-title"><div><h2>Message log</h2><p>Preview queue events. No real WhatsApp messages are sent.</p></div><button id="reset" class="secondary">Reset demo</button></div><div id="messages"></div></section>
+  <p class="foot">Prototype only · Fictional seed data · No real WhatsApp delivery · API docs: <a href="/docs">/docs</a></p>
+</main>
+<dialog id="visitDialog"><form id="visitForm"><h2>Create completed visit</h2><label>Customer<select name="customer_id" id="customer" required></select></label><div class="two"><label>Branch<select name="branch_id" id="branch" required></select></label><label>Barber<select name="barber_id" id="barber" required></select></label></div><div class="two"><label>Service<input name="service_name" value="Haircut" required></label><label>Amount (₹)<input name="amount" type="number" min="0" value="300" required></label></div><label class="check"><input name="messaging_consent" type="checkbox" checked> Customer consented to feedback messages</label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Complete visit</button></div></form></dialog>
+<dialog id="feedbackDialog"><form id="feedbackForm"><h2>Record private feedback</h2><label>Visit<select name="visit_id" id="feedbackVisit" required></select></label><label>Rating<select name="rating"><option value="1">1 — Very poor</option><option value="2">2 — Poor</option><option value="3" selected>3 — Okay</option><option value="4">4 — Good</option><option value="5">5 — Excellent</option></select></label><label>Comment<textarea name="comment" rows="3" placeholder="What could the salon improve?"></textarea></label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Save feedback</button></div></form></dialog>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
