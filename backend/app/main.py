@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -79,6 +80,7 @@ class Customer(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
     phone: Mapped[str] = mapped_column(String(40), default="")
+    location: Mapped[str] = mapped_column(String(160), default="")
     messaging_consent: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
@@ -92,6 +94,16 @@ class Visit(Base):
     amount: Mapped[float] = mapped_column(Float)
     completed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     feedback_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class VisitService(Base):
+    __tablename__ = "visit_services"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    visit_id: Mapped[int] = mapped_column(ForeignKey("visits.id", ondelete="CASCADE"))
+    service_name: Mapped[str] = mapped_column(String(120))
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    unit_price: Mapped[float] = mapped_column(Float)
+    line_total: Mapped[float] = mapped_column(Float)
 
 
 class Feedback(Base):
@@ -121,12 +133,23 @@ class MessageLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class VisitServiceInput(BaseModel):
+    service_name: str = Field(min_length=2, max_length=120)
+    quantity: int = Field(ge=1, le=50)
+    unit_price: float = Field(ge=0, le=100000)
+
+
 class VisitCreate(BaseModel):
-    customer_id: int
+    customer_id: Optional[int] = None
+    customer_name: Optional[str] = Field(default=None, max_length=120)
+    customer_phone: Optional[str] = Field(default=None, max_length=40)
+    customer_location: Optional[str] = Field(default="", max_length=160)
     branch_id: int
     barber_id: int
-    service_name: str = Field(min_length=2, max_length=120)
-    amount: float = Field(ge=0, le=100000)
+    services: list[VisitServiceInput] = Field(default_factory=list, max_length=10)
+    # Legacy single-service fields remain accepted for older API clients.
+    service_name: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    amount: Optional[float] = Field(default=None, ge=0, le=100000)
     messaging_consent: bool = False
 
 
@@ -147,6 +170,34 @@ app = FastAPI(
     description="Salon feedback and service recovery demo. Messaging is mock-only.",
 )
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+
+SERVICE_CATALOG = [
+    {"name": "Haircut", "default_price": 300},
+    {"name": "Beard Trim", "default_price": 150},
+    {"name": "Haircut + Beard", "default_price": 450},
+    {"name": "Hair Wash", "default_price": 100},
+    {"name": "Hair Color", "default_price": 700},
+]
+
+
+def normalize_phone(value: str | None) -> str:
+    digits = re.sub(r"\\D", "", value or "")
+    # Treat Indian 10-digit numbers and +91-prefixed numbers as the same phone.
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    return digits
+
+
+def customer_json(db: Session, customer: Customer) -> dict:
+    visits = db.query(Visit).filter_by(customer_id=customer.id)
+    last = visits.order_by(Visit.completed_at.desc()).first()
+    return {
+        "id": customer.id, "name": customer.name, "phone": customer.phone,
+        "location": customer.location or "", "messaging_consent": customer.messaging_consent,
+        "visit_count": visits.count(), "last_visit": last.completed_at.isoformat() if last else None,
+    }
 
 
 def get_db():
@@ -169,11 +220,18 @@ def message_for(name: str) -> str:
 def visit_json(db: Session, v: Visit) -> dict:
     c, b, barber = db.get(Customer, v.customer_id), db.get(Branch, v.branch_id), db.get(Barber, v.barber_id)
     f = db.query(Feedback).filter_by(visit_id=v.id).first()
+    lines = db.query(VisitService).filter_by(visit_id=v.id).order_by(VisitService.id).all()
+    service_items = [
+        {"service_name": x.service_name, "quantity": x.quantity,
+         "unit_price": x.unit_price, "line_total": x.line_total}
+        for x in lines
+    ]
     return {
         "id": v.id, "customer_id": v.customer_id, "customer_name": c.name if c else "Unknown",
+        "customer_phone": c.phone if c else "", "customer_location": c.location if c else "",
         "branch_id": v.branch_id, "branch_name": b.name if b else "Unknown",
         "barber_id": v.barber_id, "barber_name": barber.name if barber else "Unknown",
-        "service_name": v.service_name, "amount": v.amount,
+        "service_name": v.service_name, "service_items": service_items, "amount": v.amount,
         "completed_at": v.completed_at.isoformat(), "feedback_requested": v.feedback_requested,
         "feedback_received": bool(f), "rating": f.rating if f else None,
     }
@@ -210,8 +268,11 @@ def task_json(db: Session, t: RecoveryTask) -> dict:
 
 def seed(db: Session, reset: bool = False):
     if reset:
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
+        # Delete demo rows in FK-safe order. Never drop/recreate production tables,
+        # which would discard database grants and Row Level Security settings.
+        for model in (MessageLog, RecoveryTask, Feedback, VisitService, Visit, Customer, Barber, Branch):
+            db.query(model).delete(synchronize_session=False)
+        db.commit()
     if db.query(Branch).count():
         return
 
@@ -219,6 +280,7 @@ def seed(db: Session, reset: bool = False):
         Branch(name="The Gentlemen's Club — Koregaon Park", location="Pune"),
         Branch(name="The Gentlemen's Club — Viman Nagar", location="Pune"),
         Branch(name="The Gentlemen's Club — Baner", location="Pune"),
+        Branch(name="The Gentlemen's Club — Kalyani Nagar", location="Pune"),
     ]
     db.add_all(branches)
     db.flush()
@@ -229,14 +291,17 @@ def seed(db: Session, reset: bool = False):
         Barber(branch_id=branches[1].id, name="Kabir Shah"),
         Barber(branch_id=branches[1].id, name="Dev Kulkarni"),
         Barber(branch_id=branches[2].id, name="Ishaan More"),
+        Barber(branch_id=branches[3].id, name="Arjun Deshmukh"),
     ]
     customers = [
-        Customer(name="Aditya Shah", phone="***-***-0142", messaging_consent=True),
-        Customer(name="Neel Joshi", phone="***-***-0287", messaging_consent=True),
-        Customer(name="Samir Desai", phone="***-***-0391", messaging_consent=True),
-        Customer(name="Riya Demo", phone="***-***-0408", messaging_consent=True),
-        Customer(name="Vikram Rao", phone="***-***-0523", messaging_consent=False),
-        Customer(name="Kunal Mehta", phone="***-***-0664", messaging_consent=True),
+        # Seed customers are fictional; keep phone fields empty instead of using fake,
+        # potentially callable numbers. Real customer details are entered in the form.
+        Customer(name="Aditya Shah", phone="", location="Viman Nagar", messaging_consent=True),
+        Customer(name="Neel Joshi", phone="", location="Kalyani Nagar", messaging_consent=True),
+        Customer(name="Samir Desai", phone="", location="Koregaon Park", messaging_consent=True),
+        Customer(name="Riya Demo", phone="", location="Kharadi", messaging_consent=True),
+        Customer(name="Vikram Rao", phone="", location="Wagholi", messaging_consent=False),
+        Customer(name="Kunal Mehta", phone="", location="Baner", messaging_consent=True),
     ]
     db.add_all(barbers + customers)
     db.flush()
@@ -259,6 +324,10 @@ def seed(db: Session, reset: bool = False):
         )
         db.add(v)
         db.flush()
+        db.add(VisitService(
+            visit_id=v.id, service_name=service, quantity=1,
+            unit_price=float(amount), line_total=float(amount),
+        ))
         db.add(MessageLog(
             visit_id=v.id,
             status="mock_sent" if customers[ci].messaging_consent else "skipped_no_consent",
@@ -293,6 +362,11 @@ def health():
     return {"status": "ok", "app": "SalonPulse API", "messaging": "mock_only"}
 
 
+@app.get("/api/service-catalog")
+def get_service_catalog():
+    return SERVICE_CATALOG
+
+
 @app.get("/api/branches")
 def get_branches(db: Session = Depends(get_db)):
     return [{"id": b.id, "name": b.name, "location": b.location}
@@ -308,17 +382,28 @@ def get_barbers(branch_id: Optional[int] = None, db: Session = Depends(get_db)):
             for x in q.order_by(Barber.name).all()]
 
 
+@app.get("/api/customers/search")
+def search_customers(q: str = Query(min_length=1, max_length=120), db: Session = Depends(get_db)):
+    term = q.strip()
+    digits = normalize_phone(term)
+    customers = db.query(Customer).order_by(Customer.name).all()
+    matches = []
+    for c in customers:
+        name_match = term.casefold() in c.name.casefold()
+        phone_digits = normalize_phone(c.phone)
+        phone_match = bool(digits) and (
+            phone_digits == digits or (len(digits) >= 3 and digits in phone_digits)
+        )
+        if name_match or phone_match:
+            matches.append(c)
+    if digits:
+        matches.sort(key=lambda c: normalize_phone(c.phone) != digits)
+    return [customer_json(db, c) for c in matches[:10]]
+
+
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db)):
-    out = []
-    for c in db.query(Customer).order_by(Customer.name).all():
-        count = db.query(Visit).filter_by(customer_id=c.id).count()
-        last = db.query(Visit).filter_by(customer_id=c.id).order_by(Visit.completed_at.desc()).first()
-        out.append({
-            "id": c.id, "name": c.name, "phone": c.phone, "messaging_consent": c.messaging_consent,
-            "visit_count": count, "last_visit": last.completed_at.isoformat() if last else None,
-        })
-    return out
+    return [customer_json(db, c) for c in db.query(Customer).order_by(Customer.name).all()]
 
 
 @app.get("/api/dashboard")
@@ -349,22 +434,65 @@ def get_visits(limit: int = Query(default=100, ge=1, le=500), db: Session = Depe
 
 @app.post("/api/visits", status_code=201)
 def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
-    customer = db.get(Customer, payload.customer_id)
     branch = db.get(Branch, payload.branch_id)
     barber = db.get(Barber, payload.barber_id)
-    if not customer or not branch or not barber:
-        raise HTTPException(404, "Customer, branch, or barber not found")
+    if not branch or not barber:
+        raise HTTPException(404, "Branch or barber not found")
     if barber.branch_id != branch.id:
         raise HTTPException(400, "Barber does not belong to the selected branch")
+
+    if payload.customer_id is not None:
+        customer = db.get(Customer, payload.customer_id)
+        if not customer:
+            raise HTTPException(404, "Customer not found. Search again and select a customer.")
+    else:
+        customer_name = (payload.customer_name or "").strip()
+        customer_phone = (payload.customer_phone or "").strip()
+        customer_location = (payload.customer_location or "").strip()
+        normalized_phone = normalize_phone(customer_phone)
+        if len(normalized_phone) < 7 or len(normalized_phone) > 15:
+            raise HTTPException(400, "Enter a valid customer phone number (7–15 digits).")
+        if not customer_name:
+            raise HTTPException(400, "Customer name is required for a new customer.")
+        for existing in db.query(Customer).all():
+            if normalized_phone and normalize_phone(existing.phone) == normalized_phone:
+                raise HTTPException(
+                    409,
+                    f"This phone number already belongs to {existing.name}. Search for the returning customer and confirm the match."
+                )
+        customer = Customer(name=customer_name, phone=customer_phone, location=customer_location)
+        db.add(customer)
+        db.flush()
+
+    service_inputs = payload.services
+    if not service_inputs:
+        # Backward compatibility for older clients that submit a single service/amount.
+        if not payload.service_name or payload.amount is None:
+            raise HTTPException(400, "Add at least one service.")
+        service_inputs = [VisitServiceInput(
+            service_name=payload.service_name, quantity=1, unit_price=payload.amount
+        )]
+    total_amount = round(sum(item.quantity * item.unit_price for item in service_inputs), 2)
+    service_summary = " + ".join(
+        f"{item.service_name} ×{item.quantity}" if item.quantity > 1 else item.service_name
+        for item in service_inputs
+    )
     if payload.messaging_consent:
         customer.messaging_consent = True
+
     v = Visit(
         customer_id=customer.id, branch_id=branch.id, barber_id=barber.id,
-        service_name=payload.service_name, amount=payload.amount,
+        service_name=service_summary, amount=total_amount,
         feedback_requested=payload.messaging_consent,
     )
     db.add(v)
     db.flush()
+    for item in service_inputs:
+        line_total = round(item.quantity * item.unit_price, 2)
+        db.add(VisitService(
+            visit_id=v.id, service_name=item.service_name, quantity=item.quantity,
+            unit_price=item.unit_price, line_total=line_total,
+        ))
     if payload.messaging_consent:
         db.add(MessageLog(visit_id=v.id, status="mock_queued", message=message_for(customer.name)))
     db.commit()
@@ -374,7 +502,6 @@ def create_visit(payload: VisitCreate, db: Session = Depends(get_db)):
         "message_status": "mock_queued" if payload.messaging_consent else "not_requested",
         "notice": "Demo only: no real WhatsApp message was sent.",
     }
-
 
 @app.get("/api/feedback")
 def get_feedback(db: Session = Depends(get_db)):
