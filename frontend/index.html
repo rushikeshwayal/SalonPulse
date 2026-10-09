@@ -28,7 +28,47 @@
   <section class="panel"><div class="panel-title"><div><h2>Message log</h2><p>Preview queue events. No real WhatsApp messages are sent.</p></div><button id="reset" class="secondary">Reset demo</button></div><div id="messages"></div></section>
   <p class="foot">Prototype only · Fictional seed data · No real WhatsApp delivery · API docs: <a href="/docs">/docs</a></p>
 </main>
-<dialog id="visitDialog"><form id="visitForm"><h2>Create completed visit</h2><label>Customer<select name="customer_id" id="customer" required></select></label><div class="two"><label>Branch<select name="branch_id" id="branch" required></select></label><label>Barber<select name="barber_id" id="barber" required></select></label></div><div class="two"><label>Service<input name="service_name" value="Haircut" required></label><label>Amount (₹)<input name="amount" type="number" min="0" value="300" required></label></div><label class="check"><input name="messaging_consent" type="checkbox" checked> Customer consented to feedback messages</label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Complete visit</button></div></form></dialog>
+<dialog id="visitDialog" class="visit-dialog">
+  <form id="visitForm">
+    <div class="dialog-heading"><div><p class="eyebrow">CHECKOUT</p><h2>Record customer visit</h2><p class="muted">Identify the customer, add services, and confirm the total.</p></div><button type="button" class="icon-close close" aria-label="Close">×</button></div>
+    <section class="form-section">
+      <div class="section-heading"><span class="step">1</span><div><h3>Customer</h3><p>Look up a returning customer or register a new one.</p></div></div>
+      <div class="customer-type">
+        <label class="choice"><input type="radio" name="customer_type" value="returning"><span><strong>Returning customer</strong><small>Find by phone or name</small></span></label>
+        <label class="choice"><input type="radio" name="customer_type" value="new" checked><span><strong>New customer</strong><small>Save contact details</small></span></label>
+      </div>
+      <div id="newCustomerFields">
+        <div class="two">
+          <label>Customer phone number <span class="required">*</span><input id="newCustomerPhone" name="customer_phone" inputmode="tel" autocomplete="tel" placeholder="e.g. +91 98765 43210" required></label>
+          <label>Customer name <span class="required">*</span><input id="newCustomerName" name="customer_name" autocomplete="name" placeholder="Full name" required></label>
+        </div>
+        <label>Location / area <span class="optional">Optional</span><input id="newCustomerLocation" name="customer_location" autocomplete="address-level3" placeholder="e.g. Viman Nagar, Pune"></label>
+        <div id="newCustomerMatchNotice" class="notice" hidden></div>
+      </div>
+      <div id="returningCustomerFields" hidden>
+        <label>Search by phone number or name<input id="customerSearch" type="search" autocomplete="off" placeholder="Enter phone number or customer name"></label>
+        <div id="customerSearchResults" class="search-results"><p class="empty">Enter at least 3 characters to search existing customers.</p></div>
+        <div id="selectedCustomerConfirm" class="selected-customer" hidden></div>
+      </div>
+    </section>
+    <section class="form-section">
+      <div class="section-heading"><span class="step">2</span><div><h3>Visit details</h3><p>Choose the branch and the barber who served the customer.</p></div></div>
+      <div class="two"><label>Branch<select name="branch_id" id="branch" required></select></label><label>Barber<select name="barber_id" id="barber" required></select></label></div>
+    </section>
+    <section class="form-section">
+      <div class="section-heading"><span class="step">3</span><div><h3>Services</h3><p>Add every service provided. You can adjust quantity and price.</p></div></div>
+      <div class="service-table-heading"><span>Service</span><span>Qty</span><span>Price (₹)</span><span></span></div>
+      <div id="serviceRows"></div>
+      <button type="button" id="addService" class="add-service">＋ Add another service</button>
+      <div class="total-line"><span>Total amount</span><strong id="visitTotal">₹300</strong></div>
+    </section>
+    <section class="form-section consent-section">
+      <label class="check"><input name="messaging_consent" type="checkbox"> Customer has agreed to receive feedback messages</label>
+      <p class="muted">Demo mode only: this records consent and a mock message event; it does not send WhatsApp messages.</p>
+    </section>
+    <div class="actions"><button type="button" class="secondary close">Cancel</button><button id="saveVisit" class="primary">Save visit</button></div>
+  </form>
+</dialog>
 <dialog id="feedbackDialog"><form id="feedbackForm"><h2>Record private feedback</h2><label>Visit<select name="visit_id" id="feedbackVisit" required></select></label><label>Rating<select name="rating"><option value="1">1 — Very poor</option><option value="2">2 — Poor</option><option value="3" selected>3 — Okay</option><option value="4">4 — Good</option><option value="5">5 — Excellent</option></select></label><label>Comment<textarea name="comment" rows="3" placeholder="What could the salon improve?"></textarea></label><div class="actions"><button type="button" class="secondary close">Cancel</button><button class="primary">Save feedback</button></div></form></dialog>
 <div id="toast"></div>
 <script src="/static/app.js"></script>
