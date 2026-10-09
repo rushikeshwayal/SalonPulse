@@ -333,11 +333,11 @@ function renderCustomerVisits() {
                 ${serviceLines}
                 <div class="customer-visit-total"><span>Total paid</span><strong>${money(visit.amount)}</strong></div>
               </section>
-              <section class="customer-visit-detail-card customer-visit-feedback">
+              ${visit.feedback_received ? `<section class="customer-visit-detail-card customer-visit-feedback">
                 <span class="customer-visit-label">Customer feedback</span>
-                <strong>${visit.rating ? visit.rating + " / 5" : "No feedback submitted"}</strong>
-                <p>${esc(feedback?.comment || "No written feedback was recorded for this visit.")}</p>
-              </section>
+                <strong>${visit.rating} / 5</strong>
+                ${(visit.feedback_comment ?? feedback?.comment ?? "").trim() ? `<p>${esc(visit.feedback_comment ?? feedback.comment)}</p>` : ""}
+              </section>` : ""}
               <div class="customer-visit-actions">
                 ${canEdit ? `<button type="button" class="primary" data-edit-visit="${visit.id}">Edit latest visit</button>` : `<span class="customer-visit-readonly-note"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="8.5" width="11" height="8" rx="2"/><path d="M7 8.5V6a3 3 0 0 1 6 0v2.5"/></svg>Older visits are locked to preserve history.</span>`}
                 ${isBarber && isLatest ? `<button type="button" class="secondary" data-rate-visit="${visit.id}">${visit.customer_rating ? "Edit interaction note" : "Rate interaction"}</button>` : ""}
@@ -400,14 +400,13 @@ function render() {
   $("#visits").innerHTML = renderCustomerVisits();
 
   $("#barberCustomers").innerHTML = data.customers.length ? `<div class="customer-directory">${data.customers.map(customer => {
-    const lastVisit = data.visits.find(visit => visit.customer_id === customer.id);
-    return `<button type="button" class="customer-card" data-open-customer="${customer.id}">
+    return `<button type="button" class="customer-card" data-open-customer="${customer.id}" aria-label="View feedback history for ${esc(customer.name)}">
       <span class="customer-avatar">${esc((customer.name || "?").slice(0,1).toUpperCase())}</span>
       <span class="customer-card-main"><strong>${esc(customer.name)}</strong><small>${esc(customer.phone || "No phone saved")}</small><small>${esc(customer.location || "Location not added")}</small></span>
-      <span class="customer-card-meta"><strong>${customer.visit_count} visits</strong><small>${lastVisit ? "Last visit " + date(lastVisit.completed_at) : "No recent visit loaded"}</small></span>
+      <span class="customer-card-meta"><strong>${customer.visit_count} ${customer.visit_count === 1 ? "visit" : "visits"}</strong><small>${customer.last_visit ? "Last visit " + date(customer.last_visit) : "Tap to view feedback"}</small></span>
       <span class="customer-chevron">›</span>
     </button>`;
-  }).join("")}</div>` : '<div class="empty">Your customer list will appear after you record visits.</div>';
+  }).join("")}</div>` : '<div class="empty">Customers will appear here after you have served them.</div>';
 
   $("#activityLog").innerHTML = (data.auditLogs || []).map(entry => `
     <div class="audit-entry"><div class="audit-dot"></div><div class="audit-body">
@@ -704,6 +703,47 @@ async function openVisitDetails(id) {
     $("#visitDetailsVersions").innerHTML = `<p class="form-error">Couldn't load version history: ${esc(err.message)}</p>`;
   }
 }
+async function openCustomerReviews(customerId) {
+  const dialog = $("#customerReviewsDialog");
+  $("#customerReviewsTitle").textContent = "Customer reviews";
+  $("#customerReviewsSummary").innerHTML = "";
+  $("#customerReviewsList").innerHTML = '<p class="empty">Loading customer feedback…</p>';
+  dialog.showModal();
+  try {
+    const result = await api("/api/customers/" + customerId + "/reviews");
+    const customer = result.customer;
+    $("#customerReviewsTitle").textContent = customer.name + " · Feedback";
+    $("#customerReviewsSummary").innerHTML = `
+      <div class="customer-review-profile">
+        <span class="customer-review-avatar">${esc((customer.name || "?").slice(0, 1).toUpperCase())}</span>
+        <div class="customer-review-profile-main"><strong>${esc(customer.name)}</strong>
+          <small>${esc(customer.phone || "Phone not added")}${customer.location ? " · " + esc(customer.location) : ""}</small>
+        </div>
+      </div>
+      <div class="customer-review-metrics">
+        <div><strong>${result.visit_count}</strong><span>${result.visit_count === 1 ? "Visit served" : "Visits served"}</span></div>
+        <div><strong>${result.review_count}</strong><span>${result.review_count === 1 ? "Review received" : "Reviews received"}</span></div>
+      </div>`;
+    $("#customerReviewsList").innerHTML = result.reviews.length ? result.reviews.map(review => `
+      <article class="customer-review-card">
+        <div class="customer-review-card-heading">
+          <span class="customer-review-visit">Visit ${review.visit_number}</span>
+          <time>${dateTime(review.created_at || review.completed_at)}</time>
+        </div>
+        <div class="customer-review-rating"><span aria-label="${review.rating} out of 5 stars">${"★".repeat(review.rating)}${"☆".repeat(5 - review.rating)}</span><strong>${review.rating}/5</strong></div>
+        <div class="customer-review-service"><strong>${esc(review.service_name || "Service not specified")}</strong><span>${money(review.amount)}</span></div>
+        ${review.comment && review.comment.trim() ? `<p class="customer-review-comment">${esc(review.comment)}</p>` : '<p class="customer-review-no-comment">Star rating submitted without a written comment.</p>'}
+        <div class="customer-review-meta">${dateTime(review.completed_at)} · ${esc(review.branch_name.replace("The Gentlemen's Club — ", ""))}</div>
+      </article>`).join("") : `
+        <div class="customer-review-empty">
+          <span class="customer-review-empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-5.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8.5 12h7"/></svg></span>
+          <strong>No reviews yet</strong>
+          <p>This customer hasn't submitted feedback on the visits shown in your history.</p>
+        </div>`;
+  } catch (err) {
+    $("#customerReviewsList").innerHTML = `<p class="form-error">${esc(err.message)}</p>`;
+  }
+}
 function openCustomerRating(id) {
   const visit = data.visits.find(item => item.id === id);
   if (!visit) return toast("Visit not found. Refresh and try again.");
@@ -875,13 +915,7 @@ $("#editVisitFromDetails").addEventListener("click", () => {
 $("#barberCustomers").addEventListener("click", e => {
   const card = e.target.closest("[data-open-customer]");
   if (!card) return;
-  const customerId = Number(card.dataset.openCustomer);
-  const recentVisit = data.visits.find(visit => visit.customer_id === customerId);
-  if (!recentVisit) {
-    toast("No recent visit is in the loaded list for this customer yet.");
-    return;
-  }
-  openVisitDetails(recentVisit.id);
+  openCustomerReviews(Number(card.dataset.openCustomer));
 });
 $("#feedback").addEventListener("click", e => {
   const card = e.target.closest("[data-feedback-visit]");
