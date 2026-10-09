@@ -7,6 +7,7 @@ import re
 from typing import Optional
 
 from sqlalchemy import and_, case, func, or_
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .constants import SERVICE_CATALOG

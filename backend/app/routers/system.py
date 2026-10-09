@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
-from ..config import FRONTEND_DIR
+from ..config import FRONTEND_DIR as FRONTEND
 
 router = APIRouter()
 
