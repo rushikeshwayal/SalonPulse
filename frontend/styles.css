@@ -588,3 +588,28 @@ details.customer-visit-group[open]>.customer-visit-group-heading .customer-group
 @media(prefers-reduced-motion:reduce){
  .notification-card,.notification-card-chevron{transition:none}
 }
+
+
+/* Center the complete barber navigation group instead of leaving spare space on the right */
+.workspace-nav{
+  width:100%;
+  justify-content:center;
+  margin-inline:auto;
+}
+.workspace-tab{flex:0 1 auto}
+@media(max-width:520px){
+  .workspace-nav{
+    justify-content:space-evenly;
+    width:100%;
+    margin-inline:0;
+    gap:3px;
+  }
+  .workspace-tab{
+    flex:1 1 0;
+    min-width:0;
+    padding-inline:5px;
+  }
+}
+@media(max-width:370px){
+  .workspace-tab{flex:1 1 0;min-width:0;padding-inline:3px}
+}
