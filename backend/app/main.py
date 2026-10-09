@@ -491,19 +491,19 @@ def task_json(db: Session, t: RecoveryTask) -> dict:
 def seed_demo_users(db: Session) -> None:
     seeds = [
         ("owner", "owner@salonpulse.demo", "SalonPulse Owner", "owner", None,
-         "pbkdf2_sha256$420000$rgc7iELvo2Hh0ct31Qr9cfG7$YoHf6h5XjLIguUMwtydvEbRQtcgRqt3HvXebYcKl2RE"),
+         "pbkdf2_sha256$420000$23iYiCHmItKShez99fmXmWPU$5OIytF91x0M09r_5_-HPzAaFUpr53TIDCoJZ4auk8W0"),
         ("aarav", "aarav.patil@salonpulse.demo", "Aarav Patil", "barber", 1,
-         "pbkdf2_sha256$420000$w7zWB5HuL6yCKqWbXu2yRgz8$-8vxoyUebQVitxwpzC8TQRqQ4OC3Wb_6-mXy8bTOo_o"),
+         "pbkdf2_sha256$420000$Qaxp9eRhlRvi95K0pwEIOerl$6dtYYrJLsRMuyckc0QrZUw2uVbDNHXiYQgZIodmylDw"),
         ("rohan", "rohan.jadhav@salonpulse.demo", "Rohan Jadhav", "barber", 2,
-         "pbkdf2_sha256$420000$NKRdXyBel7zv7Ww_58_TS3Vx$n5mizeA-wYAOYGDVaHGZMrMH1XHm-OEwFWJtKXCatrU"),
+         "pbkdf2_sha256$420000$4CGHxqs1t5TvPNezMXpOxWrV$otoUciAgH-RfsFidVrHA6yl4U7VwekLUxfAfTsYYSCU"),
         ("kabir", "kabir.shah@salonpulse.demo", "Kabir Shah", "barber", 3,
-         "pbkdf2_sha256$420000$jbYrAb3Nwep9jJIqcFUFLiVV$7VO-yklqk_Dmlvao57KGYydVGCQZAc4frUer9R7bivM"),
+         "pbkdf2_sha256$420000$s-1scbpsXi1XGG97_YYf8iOw$TbVmDvb1Jv6ecXjqiauQHhP51w8axIB-JP9X7w2ToII"),
         ("dev", "dev.kulkarni@salonpulse.demo", "Dev Kulkarni", "barber", 4,
-         "pbkdf2_sha256$420000$rJ6-JDSluWWFx4EHUkK9tc8I$jNZecAvQETD_63p-yr3AfBCme1Yy_-K4eMOa_R_7aYo"),
+         "pbkdf2_sha256$420000$sU6ogeeSBNbNNuBcv1k4ncb7$SzGgO-3Iyq0BG_ao6Y8DZV5BUDOUyamWlWDjZlkoUbs"),
         ("ishaan", "ishaan.more@salonpulse.demo", "Ishaan More", "barber", 5,
-         "pbkdf2_sha256$420000$gCGjppxtE6oTzRJJiYnBRVmd$Pfkor6KFoFIcoWmrwFk6bNj8-HvglCQ4rIoNh4rvFNw"),
+         "pbkdf2_sha256$420000$CtK1t4WZEPW3-WIIudz8sZjZ$9qwhrAFtPRqzAzcgtSLLCnf2tjvtZJmfx0_3E3IiXNM"),
         ("arjun", "arjun.deshmukh@salonpulse.demo", "Arjun Deshmukh", "barber", 6,
-         "pbkdf2_sha256$420000$VhPB6_LQmQFGtrNh9RSq7qsN$76dVSlme0o1BDB-K-N5QmiUzOdxhtqoTbhay6aCK4dc"),
+         "pbkdf2_sha256$420000$M1u_l-lwKUC3Nnc5wn7o4G-s$ibaVw8SeZKJVk51D7h8vXmC33IfJTplRKTpLRK5Mx9c"),
     ]
     for username, email, display_name, role, barber_id, password_hash_value in seeds:
         exists = db.query(StaffUser.id).filter(
