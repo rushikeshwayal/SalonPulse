@@ -91,6 +91,7 @@
       <div class="two"><label>Branch<select name="branch_id" id="branch" required></select></label><label>Barber<select name="barber_id" id="barber" required></select></label></div>
       <label>Visit date &amp; time<input id="visitDateTime" name="completed_at" type="datetime-local" required></label>
       <p class="muted visit-time-note">Saved with the visit so you can see when the client last visited and plan future follow-ups.</p>
+      <label id="editReasonLabel" hidden>Reason for correction (saved in history)<textarea id="changeNote" rows="2" maxlength="500" placeholder="e.g. Corrected service price after checkout"></textarea></label>
     </section>
     <section class="form-section">
       <div class="section-heading"><span class="step">3</span><div><h3>Services</h3><p>Add every service provided. You can adjust quantity and price.</p></div></div>
