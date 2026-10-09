@@ -1,19 +1,52 @@
 # SalonPulse
 
-SalonPulse is a runnable demo for collecting salon feedback, monitoring customer experience, and tracking follow-up tasks. It uses **Python + FastAPI**, **SQLAlchemy**, and **SQLite**, with a lightweight static frontend served by FastAPI.
+SalonPulse is a salon operations demo built with **FastAPI**, **SQLAlchemy**, **Pydantic**, **Supabase PostgreSQL/SQLite**, and a static mobile-friendly frontend. The API supports authenticated owner/barber workspaces, service visits, visit version history, customer feedback, barber-specific notifications and owner reporting. Messaging is mock-only; it does not send WhatsApp messages.
 
 ## Features
 
-- Dashboard with visits, average rating, and open recovery tasks
-- Seeded demo branches, barbers, customers, visits and feedback
-- Customer-first checkout: search returning customers by phone or name, confirm the profile, or add a new customer with a phone number and optional area/location
-- Multi-service visits with line items, quantity, unit prices, and a calculated total
-- Low feedback scores automatically create a recovery task
-- Manage recovery task status
-- Branch and barber insights
-- Mock message log (does not send real WhatsApp messages)
+- Owner and barber sign-in with role-based API authorization
+- Multi-branch, customer, barber and visit management
+- Customer visit timelines, multi-service line items and totals
+- Latest-visit-only editing with before/after audit snapshots
+- Customer feedback tied to its visit and barber-scoped notifications
+- Owner-only reporting, recovery tasks, staff listing and audit logs
+- Supabase PostgreSQL in production; local SQLite for development
 - Interactive API documentation at `/docs`
-- Tests and a GitHub Actions workflow
+- API tests and JavaScript syntax checks in GitHub Actions
+
+## Backend layout
+
+The backend uses a small **composition root** in `backend/app/main.py`; it assembles the FastAPI app and registers routers. Domain code is split by responsibility:
+
+```text
+backend/
+  app/
+    main.py             # Create the FastAPI app, mount static files, include routers
+    config.py           # Environment settings and repository/frontend paths
+    constants.py        # Service catalogue and application constants
+    database.py         # SQLAlchemy engine, Base, SessionLocal and get_db
+    models.py           # ORM models and database table mappings
+    schemas.py          # Pydantic request/validation schemas
+    security.py         # Password hashes and signed bearer tokens
+    middleware.py       # Authentication middleware
+    dependencies.py     # Current-user and owner-only dependencies
+    services.py         # Query helpers, domain operations and response serializers
+    seed.py             # Local/demo data seed logic
+    routers/
+      auth.py           # Login, current account and password update
+      system.py         # Root page and health check
+      catalog.py        # Branches, barbers and service catalogue
+      customers.py      # Customer search and visit-linked review history
+      visits.py         # Dashboard and visit creation/update/history
+      notifications.py  # Feedback notifications
+      management.py     # Reporting, recovery, staff and owner audit endpoints
+  tests/
+    test_api.py
+  .env.example          # Local environment template
+  requirements.txt
+```
+
+Keep request/response contracts in `schemas.py`, database entities in `models.py`, and SQLAlchemy session/configuration in `database.py`. Route modules must depend on those modules and shared services, **not import from `main.py`**. The `main.py` module continues to expose commonly used objects such as `app`, `SessionLocal`, and ORM models for the existing test and Vercel entry points.
 
 ## Run locally
 
@@ -26,7 +59,8 @@ cd backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+Copy-Item .env.example .env
+uvicorn app.main:app --reload --env-file .env
 ```
 
 ### macOS / Linux
@@ -36,51 +70,31 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+cp .env.example .env
+uvicorn app.main:app --reload --env-file .env
 ```
 
-Open:
+Open the frontend at http://127.0.0.1:8000, API docs at http://127.0.0.1:8000/docs, and health check at http://127.0.0.1:8000/api/health. With `DATABASE_URL=` left blank, SQLite is created under `backend/salonpulse.db` and seeded locally. Demo reset is intentionally disabled on the persistent PostgreSQL database.
 
-- Frontend: http://127.0.0.1:8000
-- API docs: http://127.0.0.1:8000/docs
-- Health: http://127.0.0.1:8000/api/health
+## Environment configuration
 
-SQLite database is created locally under `backend/` on first run. Demo rows are seeded when the database is empty.
+- `DATABASE_URL`: leave blank for local SQLite; Vercel requires a Supabase PostgreSQL connection URL. Prefer the transaction pooler for serverless deployments.
+- `APP_AUTH_SECRET`: local-only sample value in `.env.example`; set a long, unique secret in Vercel Project Settings for production. Never commit a live secret.
+- `TOKEN_TTL_SECONDS`: bearer-token lifetime; defaults to 8 hours.
+- `PBKDF2_ITERATIONS`: password-hashing work factor; defaults to 420,000.
 
-## Main API routes
-
-- `GET /api/health`
-- `GET /api/dashboard`
-- `GET /api/branches`
-- `GET /api/barbers`
-- `GET /api/customers`
-- `GET /api/customers/search?q=phone-or-name`
-- `GET /api/service-catalog`
-- `GET /api/visits`
-- `POST /api/visits` (supports a confirmed `customer_id` or `customer_name` + `customer_phone` + optional `customer_location`, and a `services` array of `{service_name, quantity, unit_price}`)
-- `GET /api/feedback`
-- `POST /api/feedback`
-- `GET /api/recovery-tasks`
-- `PATCH /api/recovery-tasks/{task_id}`
-- `GET /api/insights`
-- `GET /api/messages`
-- `POST /api/demo/reset`
-
-## Supabase PostgreSQL and Vercel
-
-The repository is configured for Vercel's Python runtime through `api/index.py` and `vercel.json`. When the `DATABASE_URL` environment variable is set, the app uses PostgreSQL through Psycopg; without it, local development uses SQLite. On Vercel, `DATABASE_URL` is required so ephemeral filesystem storage is never used as the production database.
-
-1. In Supabase, open the active project and choose **Connect**.
-2. Copy the **Transaction pooler** connection string. Keep the password private; don't commit it or paste it into source files.
-3. In Vercel Project Settings → Environment Variables, add `DATABASE_URL` for Production, Preview, and Development. Use the connection string as a sensitive secret.
-4. Redeploy after saving the variable.
-
-The current schema migration is tracked in `supabase/migrations/`, including customer location and `visit_services` for normalized service line items. Tables have Row Level Security enabled and no access granted to the public `anon` or `authenticated` roles. The FastAPI application connects server-side using the database connection string; keep this backend private until authentication and authorization are implemented.
+For production, configure `DATABASE_URL` and `APP_AUTH_SECRET` in Vercel's environment variables, then redeploy. Schema changes are applied using the checked-in migrations under `supabase/migrations/`; the serverless startup deliberately does not call `create_all()` or seed PostgreSQL tables.
 
 ## Tests
 
-From `backend/`, install requirements, then run `pytest -q`.
+From the repository root:
+
+```bash
+cd backend
+python -m pytest -q
+node --check ../frontend/app.js
+```
 
 ## Important limitations
 
-This is a local demo with fictional seeded data. The message log is mocked; it does not contact WhatsApp or another provider. Before production, add authentication and authorization, migrations, environment-based configuration, rate limiting, structured logging, privacy/retention policies, and real provider integration with user consent.
+This is still a demo using fictional seed data. WhatsApp delivery is not implemented, notifications are generated from recorded customer feedback, and there is no external production identity provider, password-reset flow, rate limiting, or formal data-retention policy. Review those requirements before handling real customer data at scale.
