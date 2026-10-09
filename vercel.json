@@ -4,11 +4,5 @@
     "api/index.py": {
       "includeFiles": "frontend/**"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
-    }
-  ]
+  }
 }
