@@ -93,7 +93,7 @@ async function initAuth() {
       showPasswordChange();
       return;
     }
-    await initAuth();
+    await load();
   } catch (e) {
     showLogin(e.status === 401 ? "" : e.message);
   }
@@ -703,4 +703,4 @@ $("#reset").onclick = async () => {
     toast("Demo data reset");
   } catch(e) { toast(e.message); }
 };
-load();
+initAuth();
