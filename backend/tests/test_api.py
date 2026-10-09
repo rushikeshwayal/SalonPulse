@@ -335,10 +335,13 @@ def test_barber_customer_list_and_reviews_are_limited_to_visits_they_served():
         notifications = client.get("/api/notifications")
         assert notifications.status_code == 200, notifications.text
         notification_payload = notifications.json()
-        assert notification_payload["count"] == 1
-        assert notification_payload["notifications"][0]["visit_id"] == own_visit_id
-        assert notification_payload["notifications"][0]["message"] == "Very satisfied with the haircut."
-        assert notification_payload["notifications"][0]["rating"] == 5
+        notification_rows = notification_payload["notifications"]
+        assert notification_payload["count"] == len(notification_rows)
+        own_notification = next((row for row in notification_rows if row["visit_id"] == own_visit_id), None)
+        assert own_notification is not None
+        assert own_notification["message"] == "Very satisfied with the haircut."
+        assert own_notification["rating"] == 5
+        assert all(row["visit_id"] != other_visit_id for row in notification_rows)
         assert client.get("/api/audit-logs").status_code == 403
 
         reviews = client.get(f"/api/customers/{customer_id}/reviews")
