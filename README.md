@@ -6,6 +6,8 @@ SalonPulse is a runnable demo for collecting salon feedback, monitoring customer
 
 - Dashboard with visits, average rating, and open recovery tasks
 - Seeded demo branches, barbers, customers, visits and feedback
+- Customer-first checkout: search returning customers by phone or name, confirm the profile, or add a new customer with a phone number and optional area/location
+- Multi-service visits with line items, quantity, unit prices, and a calculated total
 - Low feedback scores automatically create a recovery task
 - Manage recovery task status
 - Branch and barber insights
@@ -52,8 +54,10 @@ SQLite database is created locally under `backend/` on first run. Demo rows are 
 - `GET /api/branches`
 - `GET /api/barbers`
 - `GET /api/customers`
+- `GET /api/customers/search?q=phone-or-name`
+- `GET /api/service-catalog`
 - `GET /api/visits`
-- `POST /api/visits`
+- `POST /api/visits` (supports a confirmed `customer_id` or `customer_name` + `customer_phone` + optional `customer_location`, and a `services` array of `{service_name, quantity, unit_price}`)
 - `GET /api/feedback`
 - `POST /api/feedback`
 - `GET /api/recovery-tasks`
@@ -71,7 +75,7 @@ The repository is configured for Vercel's Python runtime through `api/index.py` 
 3. In Vercel Project Settings → Environment Variables, add `DATABASE_URL` for Production, Preview, and Development. Use the connection string as a sensitive secret.
 4. Redeploy after saving the variable.
 
-The current schema migration is tracked in `supabase/migrations/`. Tables have Row Level Security enabled and no access granted to the public `anon` or `authenticated` roles. The FastAPI application connects server-side using the database connection string; keep this backend private until authentication and authorization are implemented.
+The current schema migration is tracked in `supabase/migrations/`, including customer location and `visit_services` for normalized service line items. Tables have Row Level Security enabled and no access granted to the public `anon` or `authenticated` roles. The FastAPI application connects server-side using the database connection string; keep this backend private until authentication and authorization are implemented.
 
 ## Tests
 
