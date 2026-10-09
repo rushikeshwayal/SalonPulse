@@ -18,6 +18,9 @@ let data = {};
 let authUser = null;
 let editingVisitId = null;
 let activeBarberView = "overview";
+let expandedVisitsLoaded = false;
+let expandedFeedbackLoaded = false;
+let expandedAuditLoaded = false;
 let selectedCustomerCandidate = null;
 let confirmedCustomer = null;
 let customerSearchTimer = null;
@@ -101,7 +104,28 @@ function applyRoleUi(user) {
   setBarberView(owner ? "overview" : activeBarberView);
 }
 document.querySelectorAll("[data-barber-tab]").forEach(button => {
-  button.addEventListener("click", () => setBarberView(button.dataset.barberTab));
+  button.addEventListener("click", async () => {
+    const view = button.dataset.barberTab;
+    setBarberView(view);
+    try {
+      if (view === "visits" && !expandedVisitsLoaded) {
+        data.visits = await api("/api/visits?limit=100");
+        expandedVisitsLoaded = true;
+        render();
+        populate();
+      } else if (view === "feedback" && !expandedFeedbackLoaded) {
+        data.feedback = await api("/api/feedback?limit=100");
+        expandedFeedbackLoaded = true;
+        render();
+      } else if (view === "activity" && !expandedAuditLoaded) {
+        data.auditLogs = await api("/api/audit-logs?limit=100");
+        expandedAuditLoaded = true;
+        render();
+      }
+    } catch (err) {
+      toast("Couldn't load this section: " + err.message);
+    }
+  });
 });
 async function initAuth() {
   if (!sessionStorage.getItem("salonpulse_token")) {
