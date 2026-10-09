@@ -67,6 +67,7 @@ def test_customer_lookup_and_multi_service_visit():
             "customer_location": "Kharadi, Pune",
             "branch_id": branch["id"],
             "barber_id": barber["id"],
+            "completed_at": "2026-08-15T18:05:00+05:30",
             "services": [
                 {"service_name": "Haircut", "quantity": 1, "unit_price": 300},
                 {"service_name": "Beard Trim", "quantity": 2, "unit_price": 150},
@@ -79,6 +80,7 @@ def test_customer_lookup_and_multi_service_visit():
         assert len(visit["service_items"]) == 2
         assert visit["customer_phone"] == "+91 98765 12345"
         assert visit["customer_location"] == "Kharadi, Pune"
+        assert visit["completed_at"] == "2026-08-15T12:35:00Z"
 
         found_by_phone = client.get(
             "/api/customers/search", params={"q": "9876512345"}
