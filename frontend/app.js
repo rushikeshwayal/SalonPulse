@@ -205,11 +205,12 @@ async function load() {
 }
 function render() {
   const d = data.dashboard;
+  const isBarber = authUser?.role === "barber";
   $("#stats").innerHTML = [
-    ["Completed visits", d.total_visits, "Across all branches"],
-    ["Service revenue", money(d.revenue), "Demo visit history"],
+    [isBarber ? "Your visits" : "Completed visits", d.total_visits, isBarber ? "Visits assigned to you" : "Across all branches"],
+    [isBarber ? "Your service total" : "Service revenue", money(d.revenue), isBarber ? "Recorded service value" : "Demo visit history"],
     ["Average rating", d.average_rating ?? "—", "Out of 5 · " + d.feedback_count + " responses"],
-    ["Open recovery tasks", d.open_recovery_tasks, "Issues needing attention"]
+    [isBarber ? "Repeat clients" : "Open recovery tasks", isBarber ? (d.repeat_customer_rate ?? 0) + "%" : d.open_recovery_tasks, isBarber ? "Customers who returned to you" : "Issues needing attention"]
   ].map(x => `<article class="stat"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></article>`).join("");
 
   $("#feedback").innerHTML = data.feedback.length ? data.feedback.map(f => `
@@ -245,15 +246,27 @@ function render() {
       <div class="meta">${esc(b.branch_name.replace("The Gentlemen's Club — ",""))} · ${b.visits} visits · ${b.feedback_count} feedback responses · rating ${b.average_rating ?? "—"}</div>
     </div>`).join("") || '<div class="empty">No employee performance data yet.</div>';
 
-  $("#visits").innerHTML = `<div class="table-wrap"><table class="table"><thead><tr>
-    <th>CUSTOMER / CONTACT</th><th>BRANCH</th><th>SERVICES</th><th>TOTAL</th><th>CUSTOMER FEEDBACK</th><th>ACTIONS</th>
-    </tr></thead><tbody>${data.visits.slice(0,20).map(v => `
-      <tr><td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">Visited ${dateTime(v.completed_at)}</span></td>
-      <td>${esc(v.branch_name.replace("The Gentlemen's Club — ",""))}<br><span class="meta">${esc(v.barber_name)}</span></td>
-      <td>${esc(v.service_name)}</td><td>${money(v.amount)}</td>
-      <td>${v.rating ? v.rating + "/5" : "Awaiting"}${v.customer_rating ? `<br><span class="meta">Interaction ${v.customer_rating}/5</span>` : ""}</td>
-      <td class="visit-actions"><button class="secondary" type="button" data-edit-visit="${v.id}">Edit</button><button class="secondary" type="button" data-history-visit="${v.id}">History</button>
-        ${authUser?.role === "barber" ? `<button class="secondary" type="button" data-rate-visit="${v.id}">${v.customer_rating ? "Edit visit note" : "Rate interaction"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  $("#visits").innerHTML = data.visits.length ? `<div class="visit-list-hint">Select any row to open the complete record and saved versions.</div><div class="table-wrap"><table class="table visit-table"><thead><tr>
+    <th>CUSTOMER</th><th>VISIT DATE</th><th>SERVICE</th><th>TOTAL</th><th>FEEDBACK</th><th>ACTIONS</th>
+    </tr></thead><tbody>${data.visits.slice(0,100).map(v => `
+      <tr class="visit-row" data-open-visit="${v.id}" tabindex="0" role="button" aria-label="Open visit record ${v.id} for ${esc(v.customer_name)}">
+        <td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">Record #${v.id}</span></td>
+        <td>${dateTime(v.completed_at)}<br><span class="meta">${esc(v.branch_name.replace("The Gentlemen's Club — ",""))} · ${esc(v.barber_name)}</span></td>
+        <td>${esc(v.service_name)}</td><td><strong>${money(v.amount)}</strong></td>
+        <td>${v.rating ? v.rating + "/5 customer feedback" : "Awaiting"}${v.customer_rating ? `<br><span class="meta">Interaction ${v.customer_rating}/5</span>` : ""}</td>
+        <td class="visit-actions"><button class="secondary" type="button" data-open-visit-button="${v.id}">Details</button><button class="secondary" type="button" data-edit-visit="${v.id}">Edit</button>
+          ${isBarber ? `<button class="secondary" type="button" data-rate-visit="${v.id}">${v.customer_rating ? "Edit note" : "Rate interaction"}</button>` : ""}</td>
+      </tr>`).join("")}</tbody></table></div>` : '<div class="empty">No visit entries yet. Start a check-in to create your first record.</div>';
+
+  $("#barberCustomers").innerHTML = data.customers.length ? `<div class="customer-directory">${data.customers.map(customer => {
+    const lastVisit = data.visits.find(visit => visit.customer_id === customer.id);
+    return `<button type="button" class="customer-card" data-open-customer="${customer.id}">
+      <span class="customer-avatar">${esc((customer.name || "?").slice(0,1).toUpperCase())}</span>
+      <span class="customer-card-main"><strong>${esc(customer.name)}</strong><small>${esc(customer.phone || "No phone saved")}</small><small>${esc(customer.location || "Location not added")}</small></span>
+      <span class="customer-card-meta"><strong>${customer.visit_count} visits</strong><small>${lastVisit ? "Last visit " + date(lastVisit.completed_at) : "No recent visit loaded"}</small></span>
+      <span class="customer-chevron">›</span>
+    </button>`;
+  }).join("")}</div>` : '<div class="empty">Your customer list will appear after you record visits.</div>';
 
   $("#activityLog").innerHTML = (data.auditLogs || []).map(entry => `
     <div class="audit-entry"><div class="audit-dot"></div><div class="audit-body">
