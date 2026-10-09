@@ -203,3 +203,67 @@ def test_roles_audit_versions_and_barber_rating():
         })
         assert rating.status_code == 201, rating.text
         assert client.get("/api/customer-ratings").json()[0]["rating"] == 5
+
+
+def test_customer_visit_numbering_and_latest_only_editing():
+    with TestClient(app) as client:
+        login_as(client, "owner")
+        reset = client.post("/api/demo/reset")
+        assert reset.status_code == 200, reset.text
+
+        branch = client.get("/api/branches").json()[0]
+        barber = next(b for b in client.get("/api/barbers").json() if b["branch_id"] == branch["id"])
+        first = client.post("/api/visits", json={
+            "customer_name": "Timeline Test Customer",
+            "customer_phone": "9876500021",
+            "customer_location": "Pune",
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "completed_at": "2026-09-01T10:00:00Z",
+            "services": [{"service_name": "Haircut", "quantity": 1, "unit_price": 300}],
+        })
+        assert first.status_code == 201, first.text
+        customer_id = first.json()["visit"]["customer_id"]
+        first_visit_id = first.json()["visit"]["id"]
+
+        second = client.post("/api/visits", json={
+            "customer_id": customer_id,
+            "branch_id": branch["id"],
+            "barber_id": barber["id"],
+            "completed_at": "2026-10-01T10:00:00Z",
+            "services": [{"service_name": "Beard Trim", "quantity": 1, "unit_price": 150}],
+        })
+        assert second.status_code == 201, second.text
+        second_visit_id = second.json()["visit"]["id"]
+
+        visits = client.get("/api/visits?limit=100").json()
+        first_record = next(v for v in visits if v["id"] == first_visit_id)
+        second_record = next(v for v in visits if v["id"] == second_visit_id)
+        assert first_record["visit_number"] == 1
+        assert second_record["visit_number"] == 2
+        assert first_record["visit_count"] == second_record["visit_count"] == 2
+        assert first_record["is_latest_visit"] is False
+        assert first_record["can_edit"] is False
+        assert second_record["is_latest_visit"] is True
+        assert second_record["can_edit"] is True
+        assert visits.index(second_record) < visits.index(first_record)
+
+        older_edit = client.patch(f"/api/visits/{first_visit_id}", json={
+            "services": [{"service_name": "Haircut", "quantity": 1, "unit_price": 400}],
+            "change_note": "Trying to edit an older visit",
+        })
+        assert older_edit.status_code == 409
+        assert "latest visit" in older_edit.json()["detail"].lower()
+
+        latest_edit = client.patch(f"/api/visits/{second_visit_id}", json={
+            "services": [{"service_name": "Beard Trim", "quantity": 1, "unit_price": 200}],
+            "change_note": "Corrected latest visit price",
+        })
+        assert latest_edit.status_code == 200, latest_edit.text
+        assert latest_edit.json()["visit"]["amount"] == 200
+
+        reassignment = client.patch(f"/api/visits/{second_visit_id}", json={
+            "customer_id": first_record["customer_id"] + 1,
+            "change_note": "Do not allow customer reassignment",
+        })
+        assert reassignment.status_code in {400, 404}
