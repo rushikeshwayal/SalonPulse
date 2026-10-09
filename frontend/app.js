@@ -217,13 +217,32 @@ function render() {
     <div class="branch"><div class="branch-top"><strong>${esc(b.branch_name.replace("The Gentlemen's Club — ",""))}</strong><span>${money(b.revenue)}</span></div>
       <div class="track"><div class="fill" style="width:${b.revenue/max*100}%"></div></div>
       <div class="meta">${b.visits} visits · average rating ${b.average_rating ?? "—"} · ${b.low_rating_count} low ratings</div>
-    </div>`).join("");
+    </div>`).join("") || '<div class="empty">No branch data available.</div>';
+
+  const employeeMax = Math.max(1, ...data.insights.barbers.map(b => b.revenue));
+  $("#employeeInsights").innerHTML = data.insights.barbers.map(b => `
+    <div class="branch"><div class="branch-top"><strong>${esc(b.barber_name)}</strong><span>${money(b.revenue)}</span></div>
+      <div class="track"><div class="fill" style="width:${b.revenue/employeeMax*100}%"></div></div>
+      <div class="meta">${esc(b.branch_name.replace("The Gentlemen's Club — ",""))} · ${b.visits} visits · ${b.feedback_count} feedback responses · rating ${b.average_rating ?? "—"}</div>
+    </div>`).join("") || '<div class="empty">No employee performance data yet.</div>';
 
   $("#visits").innerHTML = `<div class="table-wrap"><table class="table"><thead><tr>
-    <th>CUSTOMER / CONTACT</th><th>BRANCH</th><th>SERVICES</th><th>TOTAL</th><th>RATING</th>
-    </tr></thead><tbody>${data.visits.slice(0,8).map(v => `
+    <th>CUSTOMER / CONTACT</th><th>BRANCH</th><th>SERVICES</th><th>TOTAL</th><th>CUSTOMER FEEDBACK</th><th>ACTIONS</th>
+    </tr></thead><tbody>${data.visits.slice(0,20).map(v => `
       <tr><td><strong>${esc(v.customer_name)}</strong><br><span class="meta">${esc(v.customer_phone || "Phone not added")} · ${esc(v.customer_location || "Location not added")}</span><br><span class="meta">Visited ${dateTime(v.completed_at)}</span></td>
-      <td>${esc(v.branch_name.replace("The Gentlemen's Club — ",""))}</td><td>${esc(v.service_name)}</td><td>${money(v.amount)}</td><td>${v.rating ?? "Awaiting"}</td></tr>`).join("")}</tbody></table></div>`;
+      <td>${esc(v.branch_name.replace("The Gentlemen's Club — ",""))}<br><span class="meta">${esc(v.barber_name)}</span></td>
+      <td>${esc(v.service_name)}</td><td>${money(v.amount)}</td>
+      <td>${v.rating ? v.rating + "/5" : "Awaiting"}${v.customer_rating ? `<br><span class="meta">Interaction ${v.customer_rating}/5</span>` : ""}</td>
+      <td class="visit-actions"><button class="secondary" type="button" data-edit-visit="${v.id}">Edit</button><button class="secondary" type="button" data-history-visit="${v.id}">History</button>
+        ${authUser?.role === "barber" ? `<button class="secondary" type="button" data-rate-visit="${v.id}">${v.customer_rating ? "Edit visit note" : "Rate interaction"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+
+  $("#activityLog").innerHTML = (data.auditLogs || []).map(entry => `
+    <div class="audit-entry"><div class="audit-dot"></div><div class="audit-body">
+      <strong>${esc(entry.actor_username)} <span class="meta">${esc(entry.actor_role)}</span></strong>
+      <p>${esc(entry.action.replaceAll(".", " · ").replaceAll("_", " "))} · ${esc(entry.entity_type)} #${entry.entity_id}</p>
+      ${entry.change_note ? `<p class="meta">${esc(entry.change_note)}</p>` : ""}
+      <span class="meta">${dateTime(entry.created_at)}</span>
+    </div></div>`).join("") || '<div class="empty">Saved changes will appear here.</div>';
 
   $("#messages").innerHTML = data.messages.slice(0,5).map(m => `
     <div class="item"><div class="item-content"><strong>${esc(m.customer_name)} <span class="meta">${esc(m.status.replaceAll("_"," "))}</span></strong>
