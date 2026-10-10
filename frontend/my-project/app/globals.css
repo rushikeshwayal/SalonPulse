@@ -12,3 +12,28 @@
 @media(max-width:800px){.login-layout{grid-template-columns:minmax(0,1fr);max-width:460px;gap:27px}.login-story>.eyebrow{margin-top:34px}.login-story h1{font-size:40px}.login-story-copy{font-size:12px}.login-proof{font-size:10px}.dashboard-columns{grid-template-columns:minmax(0,1fr)}.stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat-card{padding:13px}.stat-card>strong{font-size:24px}}
 @media(max-width:600px){.app-header{padding:10px 12px}.app-header .brand-lockup strong{font-size:15px}.app-header .brand-lockup small,.role-chip,.profile-name{display:none}.brand-mark{width:37px;height:37px;border-radius:11px}.profile-trigger{padding:4px;border-radius:12px}.profile-icon{width:34px;height:34px}.workspace-container{width:calc(100% - 22px);padding-top:12px}.workspace-nav{top:61px;gap:3px;padding:5px;border-radius:13px}.workspace-tab{flex-direction:column;gap:5px;min-width:66px;min-height:55px;padding:8px 7px;font-size:8px}.workspace-content{padding-top:15px}.welcome-hero{align-items:flex-start;flex-direction:column;gap:17px}.welcome-hero h1{font-size:34px}.welcome-hero .button-primary{width:100%}.stats-grid-three{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-grid-three .stat-card:last-child{grid-column:1/-1}.page-heading-block{align-items:flex-start;flex-direction:column}.page-heading-block>.button-primary{width:100%}.customer-directory-grid{grid-template-columns:minmax(0,1fr)}.list-toolbar{align-items:stretch;flex-direction:column}.search-field{width:100%;max-width:none}.customer-group-summary{gap:8px;padding:11px}.customer-group-summary .pill{font-size:7px;padding:6px}.customer-group-name strong{font-size:10px}.visit-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;padding:11px 2px}.visit-number{min-width:57px;grid-row:1/span 2}.visit-summary-main{grid-column:2}.visit-summary-main small{overflow-wrap:anywhere}.visit-summary>.pill{grid-column:2;grid-row:2;justify-self:start}.visit-chevron{grid-column:3;grid-row:1/span 2}.detail-grid{grid-template-columns:minmax(0,1fr);gap:0}.service-editor-row{grid-template-columns:minmax(0,1fr) 60px 84px 32px;gap:5px}.service-editor-row .field-label{font-size:9px}.service-editor-row input,.service-editor-row select{padding:10px 6px;font-size:10px}.remove-line-button{width:31px;height:38px}.modal-backdrop{padding:8px;align-items:end}.modal-card{max-height:92vh;border-radius:18px;padding:16px}.form-grid-two{grid-template-columns:minmax(0,1fr);gap:11px}.form-span-two{grid-column:auto}.review-modal{width:100%}.notification-title-row{flex-direction:column;gap:4px}.notification-title-row time{text-align:left}.workspace-tab svg{width:18px;height:18px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+
+
+/* Centered account-details popup (not an anchored dropdown). */
+.profile-modal-backdrop{align-items:center;padding:18px}
+.profile-details-modal{width:min(460px,100%);max-height:min(86vh,720px);padding:clamp(18px,4vw,26px)}
+.profile-details-heading{align-items:center;margin-bottom:20px}
+.profile-details-identity{display:flex;align-items:center;gap:12px;min-width:0}
+.profile-details-avatar{width:48px;height:48px;border-radius:15px;font-size:15px}
+.profile-details-identity h2{margin-top:5px;font-size:20px;overflow-wrap:anywhere}
+.profile-details-identity p{margin-top:5px;color:var(--muted);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.profile-details-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.profile-detail{display:flex;flex-direction:column;gap:7px;min-width:0;padding:13px;border:1px solid #e9e8f2;border-radius:11px;background:#fbfaff}
+.profile-detail>span{color:var(--muted);font-size:9px;font-weight:750}
+.profile-detail>strong{font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.profile-detail-wide{grid-column:1/-1}
+.profile-dialog-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding-top:16px;border-top:1px solid #efedf6}
+.profile-dialog-footer>span{color:var(--muted);font-size:9px;line-height:1.5}
+.profile-dialog-footer .profile-signout{width:auto;flex-shrink:0;margin-top:0;padding:10px 13px}
+@media(max-width:600px){
+ .workspace-nav{justify-content:center;flex-wrap:wrap;overflow-x:visible;gap:4px}
+ .workspace-tab{min-width:62px}
+ .profile-details-modal{padding:17px}
+ .profile-dialog-footer{align-items:stretch;flex-direction:column}
+ .profile-dialog-footer .profile-signout{width:100%}
+}
