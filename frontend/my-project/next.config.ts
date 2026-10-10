@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
+const backendOrigin = (process.env.SALONPULSE_API_ORIGIN || "https://salon-pulse-one.vercel.app").replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
@@ -11,6 +12,14 @@ const nextConfig: NextConfig = {
         as: "*.css",
       },
     },
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: backendOrigin + "/api/:path*",
+      },
+    ];
   },
 };
 
