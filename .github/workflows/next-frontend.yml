@@ -24,5 +24,9 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Report dependency advisories
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e 'const r=require("./npm-audit.json"); const v=r.metadata?.vulnerabilities||{}; console.log("Audit summary:", JSON.stringify(v)); for(const [name,item] of Object.entries(r.vulnerabilities||{})){ if(["high","critical"].includes(item.severity)) console.log(item.severity.toUpperCase()+": "+name+" | fix: "+JSON.stringify(item.fixAvailable)); }'
       - name: Build Next.js app
         run: npm run build
