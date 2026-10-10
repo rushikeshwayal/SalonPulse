@@ -1,0 +1,11 @@
+"use client";
+import {useEffect,useState} from "react";
+import {Bell,MessageSquareText} from "lucide-react";
+import Link from "next/link";
+import {api,dateTime,money} from "@/lib/api";
+import type {Notification} from "@/lib/types";
+export default function NotificationsPage(){
+ const [rows,setRows]=useState<Notification[]>([]);const [count,setCount]=useState(0);const [loading,setLoading]=useState(true);const [error,setError]=useState("");
+ useEffect(()=>{let active=true;api<{notifications:Notification[];count:number}>("/api/notifications?limit=100").then(r=>{if(active){setRows(r.notifications||[]);setCount(r.count||0);}}).catch(e=>{if(active)setError(e instanceof Error?e.message:"Couldn't load notifications.");}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[]);
+ return <div className="page-stack"><section className="page-heading-block"><div><span className="eyebrow">YOUR UPDATES</span><h1>Notifications</h1><p>Customer feedback on visits assigned to your barber account.</p></div><span className="pill pill-accent">{count} {count===1?"update":"updates"}</span></section><section className="surface-card notification-list">{error?<p role="alert" className="alert-error">{error}</p>:null}{loading?<div className="loading-inline">Checking for feedback…</div>:rows.length?rows.map(r=><Link href={"/barber/visits#visit-"+r.visit_id} className="notification-card" key={r.id}><span className="notification-icon"><MessageSquareText size={18}/></span><span className="notification-main"><span className="notification-title-row"><strong>{r.title||"Customer feedback received"}</strong><time>{dateTime(r.created_at)}</time></span><span className="notification-client">{r.customer_name} · {"★".repeat(r.rating)}{"☆".repeat(5-r.rating)} <b>{r.rating}/5</b></span>{r.message?<span className="notification-message">{r.message}</span>:<span className="notification-message muted">Star rating submitted without a written comment.</span>}<span className="notification-meta">Visit {r.visit_number} · {r.service_name} · {money(r.amount)} · Tap to open visit</span></span></Link>):<div className="empty-state"><Bell size={25}/><strong>You're all caught up</strong><p>Customer feedback on your visits will appear here.</p></div>}</section></div>;
+}
