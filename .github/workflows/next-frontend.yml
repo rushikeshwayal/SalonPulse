@@ -1,0 +1,32 @@
+name: Next.js frontend checks
+
+on:
+  push:
+    branches: [main, next-refactor]
+    paths:
+      - "frontend/my-project/**"
+      - ".github/workflows/next-frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/my-project/**"
+      - ".github/workflows/next-frontend.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/my-project
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install
+      - name: Report dependency advisories
+        run: |
+          npm audit --json > npm-audit.json || true
+          node -e 'const r=require("./npm-audit.json"); const v=r.metadata?.vulnerabilities||{}; console.log("Audit summary:", JSON.stringify(v)); for(const [name,item] of Object.entries(r.vulnerabilities||{})){ if(["high","critical"].includes(item.severity)) console.log(item.severity.toUpperCase()+": "+name+" | fix: "+JSON.stringify(item.fixAvailable)); }'
+      - name: Build Next.js app
+        run: npm run build

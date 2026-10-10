@@ -1,0 +1,55 @@
+import type { ReactNode } from "react";
+export type IconProps = { size?: number; className?: string; strokeWidth?: number };
+type IconName = "ArrowRight"|"ArrowUpRight"|"Scissors"|"ShieldCheck"|"CalendarCheck2"|"CircleDollarSign"|"MessageCircle"|"UsersRound"|"Bell"|"ChevronDown"|"ClipboardList"|"Clock3"|"LayoutDashboard"|"LogOut"|"MessageSquareText"|"Wallet"|"Edit3"|"History"|"LockKeyhole"|"Plus"|"Trash2"|"X"|"FileClock";
+function Icon({name,size=24,className,strokeWidth=1.8}:{name:IconName}&IconProps){
+ let drawing:ReactNode;
+ switch(name){
+ case "ArrowRight":drawing=<><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></>;break;
+ case "ArrowUpRight":drawing=<><path d="M7 17 17 7"/><path d="M7 7h10v10"/></>;break;
+ case "Scissors":drawing=<><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.2 8.2 12 12M14 10l6-6m-11.8 11.8 5-5"/></>;break;
+ case "ShieldCheck":drawing=<><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/><path d="m9 12 2 2 4-4"/></>;break;
+ case "CalendarCheck2":drawing=<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M9 16l2 2 4-4"/></>;break;
+ case "CircleDollarSign":drawing=<><circle cx="12" cy="12" r="9"/><path d="M16 9.5c0-1.1-1.8-2-4-2s-4 .9-4 2 1.8 2 4 2 4 .9 4 2-1.8 2-4 2-4-.9-4-2M12 5.5v13"/></>;break;
+ case "MessageCircle":drawing=<path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H7l-3 2v-5.2A7.5 7.5 0 1 1 20 11.5Z"/>;break;
+ case "UsersRound":drawing=<><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>;break;
+ case "Bell":drawing=<path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>;break;
+ case "ChevronDown":drawing=<path d="m6 9 6 6 6-6"/>;break;
+ case "ClipboardList":drawing=<><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5h6V3H9zM9 10h6M9 14h6M9 18h3"/></>;break;
+ case "Clock3":drawing=<><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></>;break;
+ case "LayoutDashboard":drawing=<><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></>;break;
+ case "LogOut":drawing=<><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></>;break;
+ case "MessageSquareText":drawing=<><path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8M8 13h6"/></>;break;
+ case "Wallet":drawing=<><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 8h16a2 2 0 0 1 2 2v3h-5a2 2 0 0 1 0-4h5M16 11h.01"/></>;break;
+ case "Edit3":drawing=<><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></>;break;
+ case "History":drawing=<><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></>;break;
+ case "LockKeyhole":drawing=<><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3M12 14v3"/></>;break;
+ case "Plus":drawing=<path d="M12 5v14M5 12h14"/>;break;
+ case "Trash2":drawing=<><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6"/></>;break;
+ case "X":drawing=<path d="m18 6-12 12M6 6l12 12"/>;break;
+ case "FileClock":drawing=<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h7"/><path d="M14 2v6h6M10 13h4M10 17h2"/><circle cx="17" cy="17" r="4"/><path d="M17 15v2l1 1"/></>;break;
+ }
+ return <svg viewBox="0 0 24 24" width={size} height={size} className={className} fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{drawing}</svg>;
+}
+export const ArrowRight=(p:IconProps)=><Icon name="ArrowRight" {...p}/>;
+export const ArrowUpRight=(p:IconProps)=><Icon name="ArrowUpRight" {...p}/>;
+export const Scissors=(p:IconProps)=><Icon name="Scissors" {...p}/>;
+export const ShieldCheck=(p:IconProps)=><Icon name="ShieldCheck" {...p}/>;
+export const CalendarCheck2=(p:IconProps)=><Icon name="CalendarCheck2" {...p}/>;
+export const CircleDollarSign=(p:IconProps)=><Icon name="CircleDollarSign" {...p}/>;
+export const MessageCircle=(p:IconProps)=><Icon name="MessageCircle" {...p}/>;
+export const UsersRound=(p:IconProps)=><Icon name="UsersRound" {...p}/>;
+export const Bell=(p:IconProps)=><Icon name="Bell" {...p}/>;
+export const ChevronDown=(p:IconProps)=><Icon name="ChevronDown" {...p}/>;
+export const ClipboardList=(p:IconProps)=><Icon name="ClipboardList" {...p}/>;
+export const Clock3=(p:IconProps)=><Icon name="Clock3" {...p}/>;
+export const LayoutDashboard=(p:IconProps)=><Icon name="LayoutDashboard" {...p}/>;
+export const LogOut=(p:IconProps)=><Icon name="LogOut" {...p}/>;
+export const MessageSquareText=(p:IconProps)=><Icon name="MessageSquareText" {...p}/>;
+export const Wallet=(p:IconProps)=><Icon name="Wallet" {...p}/>;
+export const Edit3=(p:IconProps)=><Icon name="Edit3" {...p}/>;
+export const History=(p:IconProps)=><Icon name="History" {...p}/>;
+export const LockKeyhole=(p:IconProps)=><Icon name="LockKeyhole" {...p}/>;
+export const Plus=(p:IconProps)=><Icon name="Plus" {...p}/>;
+export const Trash2=(p:IconProps)=><Icon name="Trash2" {...p}/>;
+export const X=(p:IconProps)=><Icon name="X" {...p}/>;
+export const FileClock=(p:IconProps)=><Icon name="FileClock" {...p}/>;
