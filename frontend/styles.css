@@ -613,3 +613,69 @@ details.customer-visit-group[open]>.customer-visit-group-heading .customer-group
 @media(max-width:370px){
   .workspace-tab{flex:1 1 0;min-width:0;padding-inline:3px}
 }
+
+
+/* Final mobile alignment: center the nav, keep account control icon-only */
+@media(max-width:520px){
+  .workspace-nav{
+    display:flex;
+    justify-content:safe center;
+    align-items:stretch;
+    width:100%;
+    box-sizing:border-box;
+    overflow-x:auto;
+    scroll-padding-inline:8px;
+  }
+  .workspace-tab{
+    flex:0 0 auto;
+  }
+  header .profile-trigger{
+    display:flex;
+    width:44px;
+    min-width:44px;
+    max-width:44px;
+    height:44px;
+    padding:0;
+    margin:0;
+    justify-content:center;
+    align-items:center;
+    border:0 !important;
+    border-radius:12px;
+    background:transparent !important;
+    box-shadow:none !important;
+  }
+  header .profile-trigger:hover,
+  header .profile-trigger:active,
+  header .profile-trigger[aria-expanded="true"]{
+    border:0 !important;
+    background:transparent !important;
+    box-shadow:none !important;
+  }
+  header .profile-trigger .profile-trigger-copy,
+  header .profile-trigger .profile-trigger-chevron{
+    display:none !important;
+  }
+  header .profile-trigger .profile-trigger-avatar{
+    width:40px;
+    height:40px;
+    border:0;
+    border-radius:12px;
+    background:#efedff;
+    display:grid;
+    place-items:center;
+  }
+  header .profile-trigger .profile-trigger-avatar svg{
+    width:21px;
+    height:21px;
+  }
+}
+@media(max-width:360px){
+  .workspace-nav{
+    justify-content:safe center;
+    gap:2px;
+    padding:4px;
+  }
+  .workspace-tab{
+    padding-inline:7px;
+  }
+}
