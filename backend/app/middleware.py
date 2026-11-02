@@ -1,4 +1,9 @@
-"""Authentication middleware for protected API and documentation routes."""
+"""Authentication middleware for protected API routes.
+
+The interactive API documentation is public so developers can load Swagger UI
+and inspect the OpenAPI schema. Actual /api/* routes remain protected by the
+bearer-token authentication below.
+"""
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -12,29 +17,65 @@ def install_auth_middleware(app: FastAPI) -> None:
     @app.middleware("http")
     async def require_login(request: Request, call_next):
         path = request.url.path
+
+        # Public application and documentation endpoints. Swagger UI fetches
+        # /openapi.json and may use /docs/oauth2-redirect during authorization.
+        public_paths = {
+            "/",
+            "/api/health",
+            "/api/auth/login",
+            "/docs",
+            "/docs/oauth2-redirect",
+            "/redoc",
+            "/openapi.json",
+        }
         if (
-            path == "/" or path == "/api/health" or path == "/api/auth/login"
-            or path.startswith("/static/") or request.method == "OPTIONS"
+            path in public_paths
+            or path.startswith("/static/")
+            or request.method == "OPTIONS"
         ):
             return await call_next(request)
-        if not path.startswith("/api/") and path not in {"/docs", "/redoc", "/openapi.json"}:
+
+        # All API routes other than the explicitly public endpoints above
+        # continue through bearer-token authentication.
+        if not path.startswith("/api/"):
             return await call_next(request)
+
         auth_header = request.headers.get("authorization", "")
         token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
         claims = verify_access_token(token) if token else None
         if not claims:
-            return JSONResponse(status_code=401, content={"detail": "Please sign in to continue."},
-                                headers={"WWW-Authenticate": "Bearer"})
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Please sign in to continue."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         try:
             user_id = int(claims.get("sub", "0"))
         except (ValueError, TypeError):
             user_id = 0
+
         with SessionLocal() as db:
             user = db.get(StaffUser, user_id)
             if not user or not user.is_active:
-                return JSONResponse(status_code=401, content={"detail": "This account is not active."})
-            if user.must_change_password and path not in {"/api/auth/me", "/api/auth/change-password"}:
-                return JSONResponse(status_code=403, content={"detail": "PASSWORD_CHANGE_REQUIRED: Update your temporary password first."})
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "This account is not active."},
+                )
+            if user.must_change_password and path not in {
+                "/api/auth/me",
+                "/api/auth/change-password",
+            }:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": (
+                            "PASSWORD_CHANGE_REQUIRED: Update your temporary "
+                            "password first."
+                        )
+                    },
+                )
             request.state.user = actor_view(user)
+
         return await call_next(request)
-    
