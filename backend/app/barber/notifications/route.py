@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ...database import get_db
 from ...dependencies import get_current_user, require_barber
 from .schema import NotificationList
-from .services import list_notifications
+from ...common.services.notifications import list_notifications
 
 router = APIRouter(prefix="/api/barber/notifications", tags=["Barber / Notifications"], dependencies=[Depends(require_barber)])
 
