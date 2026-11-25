@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 from ..models import Barber, Branch, Customer, CustomerRating, Feedback, Visit, VisitService
 from .formatting import utc_iso
+from .visit_history import visit_sequence_by_id
 
 def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
     query = db.query(Visit, Customer, Branch, Barber, Feedback, CustomerRating).join(
@@ -18,25 +19,8 @@ def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
         query = query.filter(Visit.barber_id == user["barber_id"])
     rows = query.order_by(Visit.completed_at.desc(), Visit.id.desc()).limit(limit).all()
     visit_ids = [v.id for v, *_ in rows]
-    # Sequence numbers and edit eligibility are calculated across the full customer history,
-    # not just the latest page of results or the currently signed-in barber's visible visits.
-    history_rows = db.query(Visit.id, Visit.customer_id).order_by(
-        Visit.completed_at.desc(), Visit.id.desc()
-    ).all()
-    customer_sequence: dict[int, dict[int, dict[str, int | bool]]] = {}
-    per_customer: dict[int, list[int]] = {}
-    for history_visit_id, customer_id in history_rows:
-        per_customer.setdefault(customer_id, []).append(history_visit_id)
-    for customer_id, ids in per_customer.items():
-        total = len(ids)
-        customer_sequence[customer_id] = {
-            history_visit_id: {
-                "visit_number": total - index,
-                "visit_count": total,
-                "is_latest_visit": index == 0,
-            }
-            for index, history_visit_id in enumerate(ids)
-        }
+    # Use complete customer history, not just this role's visible page.
+    customer_sequence = visit_sequence_by_id(db)
     service_map: dict[int, list[dict]] = {}
     if visit_ids:
         for line in db.query(VisitService).filter(VisitService.visit_id.in_(visit_ids)).order_by(VisitService.id).all():
@@ -55,11 +39,11 @@ def visit_rows(db: Session, user: dict, limit: int = 20) -> list[dict]:
         "feedback_created_at": utc_iso(f.created_at) if f else None,
         "customer_rating": cr.rating if cr else None,
         "customer_rating_note": cr.note if cr else "",
-        **customer_sequence.get(v.customer_id, {}).get(v.id, {
-            "visit_number": 1, "visit_count": 1, "is_latest_visit": True,
-        }),
+        "visit_number": customer_sequence.get(v.id, (1, 1, False))[0],
+        "visit_count": customer_sequence.get(v.id, (1, 1, False))[1],
+        "is_latest_visit": customer_sequence.get(v.id, (1, 1, False))[2],
         "can_edit": (
-            customer_sequence.get(v.customer_id, {}).get(v.id, {}).get("is_latest_visit", False)
+            customer_sequence.get(v.id, (1, 1, False))[2]
             and (user["role"] == "owner" or v.barber_id == user.get("barber_id"))
         ),
     } for v, c, b, barber, f, cr in rows]
