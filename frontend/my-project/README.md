@@ -1,29 +1,51 @@
-# SalonPulse — Next.js frontend
+# SalonPulse frontend
 
-This is the main React UI for SalonPulse, built with Next.js App Router, TypeScript and Tailwind CSS 4. The FastAPI backend remains the source of truth for authentication, permissions, visit version history, customer feedback, notifications and owner reports.
+The production UI is the Next.js application in this directory. The FastAPI service remains the source of truth for authentication, authorization, business rules and persistence.
 
 ## Run locally
 
-Requires Node.js 20.9+ and npm.
+Requirements: Node.js 20.9+ and npm.
 
-\`\`\`powershell
+```powershell
 cd frontend/my-project
-npm install
+npm ci
+Copy-Item .env.local.example .env.local
 npm run dev
-\`\`\`
+```
 
-Open http://localhost:3000. Requests to \`/api/*\` are proxied through Next.js to the existing FastAPI deployment. To use a different backend URL, set \`SALONPULSE_API_ORIGIN\` in the environment before starting the app.
+Open http://localhost:3000.
 
-## Structure
+## Backend URL
 
-- \`app/\`: sign-in and role-specific App Router pages.
-- \`components/\`: shared workspace frame, dashboard, customer directory, visit timeline/editor, notifications and management pages.
-- \`lib/\`: API client, formatting helpers and TypeScript response contracts.
-- \`components/icons.tsx\`: small shared SVG icon set, no extra icon dependency needed.
+Set one server-side environment variable in `.env.local`:
 
-## Security and data behavior
+```dotenv
+# Local FastAPI
+SALONPULSE_API_ORIGIN=http://127.0.0.1:8000
 
-- The API validates tokens and role permissions; client-side navigation is not the security boundary.
-- Visit edits use the existing version/audit API; older visits remain read-only.
-- Barber customer lookup/notifications are restricted by the backend.
-- Messaging remains mock-only. This prototype does not send WhatsApp messages.
+# Or deployed FastAPI
+# SALONPULSE_API_ORIGIN=https://salon-pulse-one.vercel.app
+```
+
+Next.js proxies browser requests from `/api/*` to this origin using `next.config.ts`. Frontend code should always call the relative `/api/...` path through `lib/api.ts`; do not hardcode deployment domains in components. Restart `npm run dev` after changing `.env.local`.
+
+For Vercel, set `SALONPULSE_API_ORIGIN` in the `salon-pulse-next` project's Environment Variables for the relevant environments, then redeploy. This variable is server-side and must not use the `NEXT_PUBLIC_` prefix.
+
+## Project structure
+
+- `app/`: routes, layouts and global styles (Next.js App Router).
+- `components/`: shared UI and workspace features.
+- `lib/api.ts`: the single HTTP client and shared formatting helpers.
+- `lib/types.ts`: API response and domain types.
+- `next.config.ts`: backend proxy configuration.
+
+Keep feature-specific UI close to its route when it is not reused. Put genuinely shared components in `components/`; avoid creating one-file folders or abstractions that only add indirection.
+
+## Quality checks
+
+```powershell
+npm run lint
+npm run build
+```
+
+Authentication and role permissions are enforced by FastAPI, not by hiding frontend navigation. Messaging is currently mock-only; no WhatsApp messages are delivered.
