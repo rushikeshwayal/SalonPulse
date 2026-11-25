@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ...database import get_db
 from ...dependencies import get_current_user, require_owner
-from .services import list_audit_logs
+from ...common.services.audit import list_audit_logs
 
 router = APIRouter(prefix="/api/owner/audit-logs", tags=["Owner / Audit"], dependencies=[Depends(require_owner)])
 
