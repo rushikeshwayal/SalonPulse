@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ...database import get_db
 from ...dependencies import get_current_user, require_barber
 from ...schemas import CustomerRatingCreate
-from .services import create_rating, list_ratings
+from ...common.services.ratings import create_rating, list_ratings
 
 router = APIRouter(prefix="/api/barber/customer-ratings", tags=["Barber / Customer Ratings"], dependencies=[Depends(require_barber)])
 
