@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session
 from ...models import Barber, Branch, Customer, Feedback, Visit
-from ...services import utc_iso
+from ..projections.formatting import utc_iso
 
 
 def list_notifications(db: Session, user: dict, limit: int = 50) -> dict:
