@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ...database import get_db
 from ...dependencies import get_current_user, require_owner
-from .services import list_messages
+from ...common.services.messages import list_messages
 
 router = APIRouter(prefix="/api/owner/messages", tags=["Owner / Messaging"], dependencies=[Depends(require_owner)])
 
