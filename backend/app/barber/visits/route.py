@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ...common.services.visits import (
-    create_visit,
-    get_visit_history,
+    create_visit as create_visit_use_case,
+    get_visit_history as get_visit_history_use_case,
     list_visits,
-    update_visit,
+    update_visit as update_visit_use_case,
 )
 from ...database import get_db
 from ...dependencies import get_current_user, require_barber
@@ -30,22 +30,22 @@ def visits(
 
 
 @router.post("", status_code=201, summary="Record a customer visit")
-def create_visit_route(
+def create_visit(
     payload: VisitCreate,
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    return create_visit(db, user, payload)
+    return create_visit_use_case(db, user, payload)
 
 
 @router.patch("/{visit_id}", summary="Edit the latest customer visit")
-def update_visit_route(
+def update_visit(
     visit_id: int,
     payload: VisitUpdate,
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    return update_visit(db, user, visit_id, payload)
+    return update_visit_use_case(db, user, visit_id, payload)
 
 
 @router.get("/{visit_id}/history", summary="Get saved versions and audit history for a visit")
@@ -54,4 +54,4 @@ def visit_history(
     db: Session = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
-    return get_visit_history(db, user, visit_id)
+    return get_visit_history_use_case(db, user, visit_id)
