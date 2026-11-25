@@ -3,10 +3,14 @@
 from sqlalchemy.orm import Session
 
 from ..constants import SERVICE_CATALOG
-from ..services import (
-    audit_logs_initial, barber_rows, branch_rows, customer_rows, dashboard_data,
-    feedback_rows, insight_data, message_rows, task_rows, visit_rows,
-)
+from .projections.audit import audit_logs_initial
+from .projections.catalog import barber_rows, branch_rows
+from .projections.customers import customer_rows
+from .projections.dashboard import dashboard_data, insight_data
+from .projections.feedback import feedback_rows
+from .projections.messages import message_rows
+from .projections.recovery import task_rows
+from .projections.visits import visit_rows
 
 
 def build_bootstrap(db: Session, user: dict) -> dict:
