@@ -3,7 +3,8 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import Barber, Branch, Customer, Feedback, Visit
-from ...services import customer_rows, normalize_phone, utc_iso
+from ..projections.customers import customer_rows
+from ..projections.formatting import normalize_phone, utc_iso
 
 
 def list_customers(db: Session, user: dict) -> list[dict]:
