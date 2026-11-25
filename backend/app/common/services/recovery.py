@@ -4,7 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import RecoveryTask
 from ...schemas import RecoveryUpdate
-from ...services import add_audit, task_json, task_rows
+from ..projections.audit import add_audit
+from ..projections.recovery import task_rows
+from ..projections.serializers import task_json
 
 
 def list_tasks(db: Session, user: dict, status: str | None = None, limit: int = 20) -> list[dict]:
