@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from ...database import get_db
 from ...dependencies import get_current_user, require_owner
-from .services import list_ratings
+from ...common.services.ratings import list_ratings
 
 router = APIRouter(prefix="/api/owner/customer-ratings", tags=["Owner / Customer Ratings"], dependencies=[Depends(require_owner)])
 
