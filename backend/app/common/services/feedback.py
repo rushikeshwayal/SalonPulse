@@ -4,7 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import Feedback, RecoveryTask, Visit
 from ...schemas import FeedbackCreate
-from ...services import check_visit_access, feedback_json, feedback_rows
+from ..projections.access import check_visit_access
+from ..projections.feedback import feedback_rows
+from ..projections.serializers import feedback_json
 
 
 def list_feedback(db: Session, user: dict, limit: int = 20) -> list[dict]:

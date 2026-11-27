@@ -3,7 +3,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import AuditLog
-from ...services import utc_iso
+from ..projections.formatting import utc_iso
 
 
 def list_audit_logs(db: Session, user: dict, limit: int = 50) -> list[dict]:

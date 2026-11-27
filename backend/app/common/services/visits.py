@@ -5,10 +5,12 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import AuditLog, Barber, Branch, Customer, MessageLog, Visit, VisitService
 from ...schemas import VisitCreate, VisitServiceInput, VisitUpdate
-from ...services import (
-    add_audit, branch_id_for_user, check_latest_visit_editable, check_visit_access,
-    dashboard_data, message_for, normalize_phone, utc_iso, visit_rows, visit_snapshot,
-)
+from ..projections.access import branch_id_for_user, check_latest_visit_editable, check_visit_access
+from ..projections.audit import add_audit
+from ..projections.dashboard import dashboard_data
+from ..projections.formatting import message_for, normalize_phone, utc_iso
+from ..projections.serializers import visit_snapshot
+from ..projections.visits import visit_rows
 
 
 def get_dashboard(db: Session, user: dict) -> dict:

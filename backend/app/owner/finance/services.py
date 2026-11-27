@@ -2,7 +2,7 @@
 
 from sqlalchemy.orm import Session
 
-from ...services import dashboard_data, insight_data
+from ...common.projections.dashboard import dashboard_data, insight_data
 
 
 def finance_overview(db: Session, user: dict) -> dict:

@@ -10,7 +10,7 @@ from .models import (
     AuditLog, Barber, Branch, Customer, CustomerRating, Feedback, MessageLog,
     RecoveryTask, StaffUser, Visit, VisitService,
 )
-from .services import message_for
+from .common.projections.formatting import message_for
 def seed_demo_users(db: Session) -> None:
     seeds = [
         ("owner", "owner@salonpulse.demo", "SalonPulse Owner", "owner", None,

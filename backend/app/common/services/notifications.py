@@ -2,7 +2,8 @@
 
 from sqlalchemy.orm import Session
 from ...models import Barber, Branch, Customer, Feedback, Visit
-from ...services import utc_iso
+from ..projections.formatting import utc_iso
+from ..projections.visit_history import visit_sequence_by_id
 
 
 def list_notifications(db: Session, user: dict, limit: int = 50) -> dict:
@@ -15,20 +16,11 @@ def list_notifications(db: Session, user: dict, limit: int = 50) -> dict:
     if user["role"] == "barber":
         query = query.filter(Visit.barber_id == user["barber_id"])
     rows = query.order_by(Feedback.created_at.desc(), Feedback.id.desc()).limit(limit).all()
-    visit_sequences: dict[int, tuple[int, int]] = {}
-    history_rows = db.query(Visit.id, Visit.customer_id).order_by(
-        Visit.completed_at.desc(), Visit.id.desc()
-    ).all()
-    per_customer: dict[int, list[int]] = {}
-    for history_visit_id, customer_id in history_rows:
-        per_customer.setdefault(customer_id, []).append(history_visit_id)
-    for ids in per_customer.values():
-        for index, history_visit_id in enumerate(ids):
-            visit_sequences[history_visit_id] = (len(ids) - index, len(ids))
-    
+    visit_sequences = visit_sequence_by_id(db)
+
     notifications = []
     for feedback, visit, customer, branch, barber in rows:
-        number, total = visit_sequences.get(visit.id, (1, 1))
+        number, total, _is_latest = visit_sequences.get(visit.id, (1, 1, False))
         notifications.append({
             "id": "feedback-" + str(feedback.id),
             "type": "customer_feedback",

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..constants import SERVICE_CATALOG
 from ..database import get_db
 from ..dependencies import get_current_user
-from ..services import barber_rows, branch_rows
+from ..common.projections.catalog import barber_rows, branch_rows
 
 router = APIRouter()
 

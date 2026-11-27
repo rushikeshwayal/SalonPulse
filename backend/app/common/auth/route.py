@@ -13,7 +13,7 @@ from ...schemas import ChangePasswordRequest, LoginRequest
 from ...security import (
     TOKEN_TTL_SECONDS, actor_view, create_access_token, hash_password, verify_password,
 )
-from ...services import add_audit
+from ..projections.audit import add_audit
 
 router = APIRouter(tags=["Common / Authentication"])
 

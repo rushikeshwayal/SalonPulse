@@ -5,7 +5,9 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ...models import Customer, CustomerRating, StaffUser, Visit
 from ...schemas import CustomerRatingCreate
-from ...services import add_audit, check_visit_access, utc_iso
+from ..projections.access import check_visit_access
+from ..projections.audit import add_audit
+from ..projections.formatting import utc_iso
 
 
 def list_ratings(db: Session, user: dict, limit: int = 50) -> list[dict]:
